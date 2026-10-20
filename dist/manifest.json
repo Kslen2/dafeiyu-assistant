@@ -1,0 +1,18 @@
+{
+  "name": "大肥鱼助手",
+  "short_name": "大肥鱼",
+  "description": "本地优先的个人生活记录与 AI 复盘助手",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f5ef",
+  "theme_color": "#397868",
+  "icons": [
+    {
+      "src": "./assets/deepseek-icon.png",
+      "sizes": "474x474",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

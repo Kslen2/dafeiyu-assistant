@@ -1,0 +1,60 @@
+{
+  "entries": [
+    { "id": "p-s13", "type": "sleep", "date": "2026-10-13", "createdAt": "2026-10-13T07:40:00+08:00", "data": { "hours": 6.8 }, "source": "preview" },
+    { "id": "p-s14", "type": "sleep", "date": "2026-10-14", "createdAt": "2026-10-14T07:35:00+08:00", "data": { "hours": 7.2 }, "source": "preview" },
+    { "id": "p-s15", "type": "sleep", "date": "2026-10-15", "createdAt": "2026-10-15T07:30:00+08:00", "data": { "hours": 7.6 }, "source": "preview" },
+    { "id": "p-s16", "type": "sleep", "date": "2026-10-16", "createdAt": "2026-10-16T08:10:00+08:00", "data": { "hours": 6.5 }, "source": "preview" },
+    { "id": "p-s17", "type": "sleep", "date": "2026-10-17", "createdAt": "2026-10-17T08:20:00+08:00", "data": { "hours": 7.8 }, "source": "preview" },
+    { "id": "p-s18", "type": "sleep", "date": "2026-10-18", "createdAt": "2026-10-18T08:15:00+08:00", "data": { "hours": 8 }, "source": "preview" },
+    { "id": "p-s19", "type": "sleep", "date": "2026-10-19", "createdAt": "2026-10-19T07:45:00+08:00", "data": { "hours": 7.4 }, "source": "preview" },
+
+    { "id": "p-w13", "type": "water", "date": "2026-10-13", "createdAt": "2026-10-13T21:00:00+08:00", "data": { "ml": 1300 }, "source": "preview" },
+    { "id": "p-w14", "type": "water", "date": "2026-10-14", "createdAt": "2026-10-14T21:00:00+08:00", "data": { "ml": 1600 }, "source": "preview" },
+    { "id": "p-w15", "type": "water", "date": "2026-10-15", "createdAt": "2026-10-15T21:00:00+08:00", "data": { "ml": 1800 }, "source": "preview" },
+    { "id": "p-w16", "type": "water", "date": "2026-10-16", "createdAt": "2026-10-16T21:00:00+08:00", "data": { "ml": 1200 }, "source": "preview" },
+    { "id": "p-w17", "type": "water", "date": "2026-10-17", "createdAt": "2026-10-17T21:00:00+08:00", "data": { "ml": 1900 }, "source": "preview" },
+    { "id": "p-w18", "type": "water", "date": "2026-10-18", "createdAt": "2026-10-18T21:00:00+08:00", "data": { "ml": 1700 }, "source": "preview" },
+    { "id": "p-w19", "type": "water", "date": "2026-10-19", "createdAt": "2026-10-19T18:00:00+08:00", "data": { "ml": 1500 }, "source": "preview" },
+
+    { "id": "p-x13", "type": "exercise", "date": "2026-10-13", "createdAt": "2026-10-13T18:30:00+08:00", "data": { "activity": "快走", "minutes": 30 }, "source": "preview" },
+    { "id": "p-x15", "type": "exercise", "date": "2026-10-15", "createdAt": "2026-10-15T19:00:00+08:00", "data": { "activity": "力量训练", "minutes": 45 }, "source": "preview" },
+    { "id": "p-x17", "type": "exercise", "date": "2026-10-17", "createdAt": "2026-10-17T17:30:00+08:00", "data": { "activity": "跑步", "minutes": 35 }, "source": "preview" },
+    { "id": "p-x18", "type": "exercise", "date": "2026-10-18", "createdAt": "2026-10-18T20:00:00+08:00", "data": { "activity": "瑜伽", "minutes": 25 }, "source": "preview" },
+
+    { "id": "p-e13a", "type": "expense", "date": "2026-10-13", "createdAt": "2026-10-13T08:10:00+08:00", "data": { "amount": 2, "category": "交通", "note": "地铁" }, "source": "preview" },
+    { "id": "p-e13b", "type": "expense", "date": "2026-10-13", "createdAt": "2026-10-13T12:20:00+08:00", "data": { "amount": 26, "category": "餐饮", "note": "午饭" }, "source": "preview" },
+    { "id": "p-e14", "type": "expense", "date": "2026-10-14", "createdAt": "2026-10-14T19:10:00+08:00", "data": { "amount": 45, "category": "购物", "note": "日用品" }, "source": "preview" },
+    { "id": "p-e15", "type": "expense", "date": "2026-10-15", "createdAt": "2026-10-15T12:30:00+08:00", "data": { "amount": 32, "category": "餐饮", "note": "牛肉面" }, "source": "preview" },
+    { "id": "p-e16", "type": "expense", "date": "2026-10-16", "createdAt": "2026-10-16T22:00:00+08:00", "data": { "amount": 12, "category": "交通", "note": "公交与单车" }, "source": "preview" },
+    { "id": "p-e17", "type": "expense", "date": "2026-10-17", "createdAt": "2026-10-17T20:00:00+08:00", "data": { "amount": 38, "category": "娱乐", "note": "电影票" }, "source": "preview" },
+    { "id": "p-e18", "type": "expense", "date": "2026-10-18", "createdAt": "2026-10-18T16:00:00+08:00", "data": { "amount": 56, "category": "购物", "note": "水果和纸巾" }, "source": "preview" },
+    { "id": "p-e19a", "type": "expense", "date": "2026-10-19", "createdAt": "2026-10-19T08:20:00+08:00", "data": { "amount": 18, "category": "餐饮", "note": "咖啡" }, "source": "preview" },
+    { "id": "p-e19b", "type": "expense", "date": "2026-10-19", "createdAt": "2026-10-19T09:10:00+08:00", "data": { "amount": 1, "category": "交通", "note": "公交" }, "source": "preview" },
+
+    { "id": "p-m13", "type": "meal", "date": "2026-10-13", "createdAt": "2026-10-13T12:25:00+08:00", "data": { "name": "鸡肉米饭配蔬菜", "calories": 620, "protein": 39, "carbs": 76, "fat": 17, "confirmed": true }, "source": "preview" },
+    { "id": "p-m14", "type": "meal", "date": "2026-10-14", "createdAt": "2026-10-14T12:40:00+08:00", "data": { "name": "番茄牛肉面", "calories": 680, "protein": 34, "carbs": 86, "fat": 21, "confirmed": true }, "source": "preview" },
+    { "id": "p-m15", "type": "meal", "date": "2026-10-15", "createdAt": "2026-10-15T08:10:00+08:00", "data": { "name": "酸奶水果燕麦碗", "calories": 420, "protein": 16, "carbs": 54, "fat": 15, "confirmed": true }, "source": "preview" },
+    { "id": "p-m16", "type": "meal", "date": "2026-10-16", "createdAt": "2026-10-16T12:30:00+08:00", "data": { "name": "清蒸鱼配米饭", "calories": 590, "protein": 41, "carbs": 68, "fat": 16, "confirmed": true }, "source": "preview" },
+    { "id": "p-m17", "type": "meal", "date": "2026-10-17", "createdAt": "2026-10-17T18:50:00+08:00", "data": { "name": "牛肉意面", "calories": 720, "protein": 38, "carbs": 92, "fat": 23, "confirmed": true }, "source": "preview" },
+    { "id": "p-m18", "type": "meal", "date": "2026-10-18", "createdAt": "2026-10-18T12:10:00+08:00", "data": { "name": "水饺与凉拌蔬菜", "calories": 610, "protein": 27, "carbs": 81, "fat": 19, "confirmed": true }, "source": "preview" },
+    { "id": "p-m19", "type": "meal", "date": "2026-10-19", "createdAt": "2026-10-19T08:00:00+08:00", "data": { "name": "燕麦鸡蛋牛奶早餐", "calories": 450, "protein": 24, "carbs": 52, "fat": 16, "confirmed": true }, "source": "preview" }
+  ],
+  "tasks": [
+    { "id": "p-t1", "text": "买洗衣液", "dueDate": "2026-10-19", "done": false, "createdAt": "2026-10-19T09:00:00+08:00", "source": "preview" },
+    { "id": "p-t2", "text": "整理本周消费票据", "dueDate": "2026-10-20", "done": false, "createdAt": "2026-10-19T09:05:00+08:00", "source": "preview" },
+    { "id": "p-t3", "text": "预约理发", "dueDate": "", "done": false, "createdAt": "2026-10-18T10:00:00+08:00", "source": "preview" },
+    { "id": "p-t4", "text": "完成 30 分钟快走", "dueDate": "2026-10-18", "done": true, "createdAt": "2026-10-17T10:00:00+08:00", "source": "preview" }
+  ],
+  "messages": [
+    { "id": "p-msg1", "role": "user", "type": "text", "text": "昨晚睡了7.4小时，今天喝水1500毫升", "createdAt": "2026-10-19T18:00:00+08:00" },
+    { "id": "p-msg2", "role": "assistant", "type": "ack", "text": "已记录睡眠 7.4 小时、饮水 1500ml", "createdAt": "2026-10-19T18:00:02+08:00" },
+    { "id": "p-msg3", "role": "user", "type": "text", "text": "早餐吃了燕麦、鸡蛋和牛奶，估算450千卡", "createdAt": "2026-10-19T18:01:00+08:00" },
+    { "id": "p-msg4", "role": "assistant", "type": "ack", "text": "已确认并计入今天的早餐记录。", "createdAt": "2026-10-19T18:01:02+08:00" },
+    { "id": "p-msg5", "role": "user", "type": "text", "text": "坐公交花了1元，咖啡18元，明天记得整理本周消费票据", "createdAt": "2026-10-19T18:02:00+08:00" },
+    { "id": "p-msg6", "role": "assistant", "type": "ack", "text": "已记录交通消费 ¥1、餐饮消费 ¥18、待办“整理本周消费票据”", "createdAt": "2026-10-19T18:02:02+08:00" },
+    { "id": "p-msg7", "role": "user", "type": "text", "text": "总结今天", "createdAt": "2026-10-19T18:03:00+08:00" },
+    { "id": "p-msg8", "role": "assistant", "type": "summary", "createdAt": "2026-10-19T18:03:03+08:00", "summary": { "title": "作息稳定，记录逐渐完整", "date": "10/19", "sleep": "7.4 小时", "exercise": "尚未记录", "water": "1500ml", "expense": "¥19", "suggestions": ["晚间再补一到两杯水", "晚餐补充一份蔬菜和优质蛋白", "明天继续保持自然记录"] } },
+    { "id": "p-msg9", "role": "user", "type": "text", "text": "结合我最近的记录，建议我晚上吃什么？", "createdAt": "2026-10-19T18:04:00+08:00" },
+    { "id": "p-msg10", "role": "assistant", "type": "text", "text": "最近一周蛋白质基本稳定，但蔬菜记录偏少。今晚可以选清蒸鱼或豆腐，搭配两份蔬菜和半碗米饭；如果不太饿，就把主食再减一点。", "createdAt": "2026-10-19T18:04:04+08:00" }
+  ]
+}

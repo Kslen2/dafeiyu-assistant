@@ -1,0 +1,53 @@
+{
+  "entries": [
+    {
+      "id": "month-expense-20260929",
+      "type": "expense",
+      "date": "2026-09-29",
+      "createdAt": "2026-09-29T19:00:00+08:00",
+      "data": { "amount": 88, "category": "购物", "note": "买日用品" },
+      "source": "test"
+    },
+    {
+      "id": "month-sleep-20260930",
+      "type": "sleep",
+      "date": "2026-09-30",
+      "createdAt": "2026-09-30T08:00:00+08:00",
+      "data": { "hours": 6.5 },
+      "source": "test"
+    },
+    {
+      "id": "month-meal-20261005",
+      "type": "meal",
+      "date": "2026-10-05",
+      "createdAt": "2026-10-05T12:30:00+08:00",
+      "data": { "name": "牛肉盖饭", "calories": 700, "protein": 32, "carbs": 88, "fat": 22, "confirmed": true },
+      "source": "test"
+    },
+    {
+      "id": "week-sleep-20261014",
+      "type": "sleep",
+      "date": "2026-10-14",
+      "createdAt": "2026-10-14T08:00:00+08:00",
+      "data": { "hours": 8 },
+      "source": "test"
+    },
+    {
+      "id": "week-exercise-20261018",
+      "type": "exercise",
+      "date": "2026-10-18",
+      "createdAt": "2026-10-18T18:00:00+08:00",
+      "data": { "activity": "快走", "minutes": 40 },
+      "source": "test"
+    },
+    {
+      "id": "today-water-20261019",
+      "type": "water",
+      "date": "2026-10-19",
+      "createdAt": "2026-10-19T14:00:00+08:00",
+      "data": { "ml": 1500 },
+      "source": "test"
+    }
+  ],
+  "tasks": []
+}

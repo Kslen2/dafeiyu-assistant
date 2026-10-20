@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4f1e9">
+  <meta name="description" content="大肥鱼助手——你的本地生活记录与复盘助手">
+  <title>大肥鱼助手</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <div class="desktop-backdrop" aria-hidden="true">
+    <div class="backdrop-copy">
+      <span class="eyebrow">DAFEIYU ASSISTANT</span>
+      <h1>把生活记下来，<br>慢慢看见变化。</h1>
+      <p>电脑预览版 · 手机优先设计</p>
+    </div>
+  </div>
+
+  <main class="phone-shell" id="app">
+    <div class="status-bar" aria-hidden="true">
+      <span id="statusTime">09:41</span>
+      <span class="status-icons">● ◔</span>
+    </div>
+
+    <section class="view active" data-view="chat" aria-label="聊天">
+      <header class="app-header chat-header">
+        <div class="brand-block">
+          <div class="fish-avatar" aria-hidden="true">
+            <img src="./assets/deepseek-icon.png" alt="">
+          </div>
+          <div>
+            <h2>大肥鱼助手</h2>
+            <p><span class="online-dot"></span> 数据保存在本机</p>
+          </div>
+        </div>
+        <button class="icon-button" id="openToday" aria-label="查看今日概览">今日</button>
+      </header>
+
+      <div class="demo-banner" id="demoBanner">
+        <span>当前展示的是演示数据</span>
+        <button id="clearDemo">开始我的记录</button>
+      </div>
+
+      <div class="chat-scroll" id="chatScroll">
+        <div class="date-divider"><span>今天</span></div>
+        <div id="messageList" class="message-list" aria-live="polite"></div>
+      </div>
+
+      <div class="composer-area">
+        <div class="quick-row" aria-label="快捷操作">
+          <button class="quick-chip" data-prompt="总结今天">总结今天</button>
+          <button class="quick-chip" data-prompt="今天花了">记消费</button>
+          <button class="quick-chip" data-prompt="喝了 500ml 水">记饮水</button>
+          <button class="quick-chip" id="photoQuick">拍照记饮食</button>
+        </div>
+        <div class="composer">
+          <label class="attach-button" for="photoInput" aria-label="添加照片">
+            <span>＋</span>
+          </label>
+          <textarea id="chatInput" rows="1" maxlength="500" placeholder="记下刚刚发生的事…"></textarea>
+          <button class="send-button" id="sendButton" aria-label="发送">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-7-4 14-3.2-5.3L5 12Zm6.8 1.7L19 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+        </div>
+        <p class="composer-note" id="composerNote">普通记录只保存；饮食会自动估算</p>
+      </div>
+    </section>
+
+    <section class="view" data-view="day" aria-label="当天">
+      <header class="app-header page-header">
+        <div>
+          <span class="eyebrow" id="dayEyebrow">今天</span>
+          <h2 id="dayHeading">当天记录</h2>
+        </div>
+        <button class="icon-button" id="dayToday">回到今天</button>
+      </header>
+      <div class="page-scroll day-content">
+        <div class="day-picker">
+          <button data-day-shift="-1" aria-label="前一天">‹</button>
+          <label class="day-date-control">
+            <span class="day-date-label" id="dayDateLabel">选择日期</span>
+            <span class="day-date-chevron" aria-hidden="true">⌄</span>
+            <input id="dayDateInput" type="date" aria-label="选择日期">
+          </label>
+          <button data-day-shift="1" aria-label="后一天">›</button>
+        </div>
+        <div class="day-summary-grid" id="daySummaryGrid"></div>
+        <section class="day-section">
+          <div class="section-title">
+            <h3>当天时间轴</h3>
+            <div class="section-title-actions"><span id="dayEntryCount">0 条</span><button id="openEntryCreator" type="button">＋ 添加</button></div>
+          </div>
+          <div class="day-entry-list" id="dayEntries"></div>
+        </section>
+        <section class="day-section">
+          <div class="section-title"><h3>当天待办</h3><span id="dayTaskCount">0 项</span></div>
+          <div class="day-task-list" id="dayTasks"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="view" data-view="trends" aria-label="趋势">
+      <header class="app-header page-header">
+        <div>
+          <span class="eyebrow">最近 7 天</span>
+          <h2>生活趋势</h2>
+        </div>
+        <span class="range-pill" id="trendRange">本周</span>
+      </header>
+      <div class="page-scroll trends-content">
+        <article class="overview-card">
+          <div>
+            <span class="section-kicker">本周状态</span>
+            <h3>节奏正在变稳</h3>
+            <p id="overviewText">睡眠比上周更规律，运动保持得不错。</p>
+          </div>
+          <div class="score-ring" aria-label="生活节奏评分 78">
+            <strong id="scoreValue">78</strong><span>分</span>
+          </div>
+        </article>
+
+        <div class="metric-grid" id="metricGrid"></div>
+
+        <article class="chart-card">
+          <div class="card-heading">
+            <div>
+              <span class="section-kicker">睡眠</span>
+              <h3>每日时长</h3>
+            </div>
+            <span class="subtle" id="sleepAverage">均值 7.1h</span>
+          </div>
+          <div class="bar-chart" id="sleepChart" aria-label="最近七天睡眠柱状图"></div>
+        </article>
+
+        <article class="chart-card nutrition-card">
+          <div class="card-heading">
+            <div>
+              <span class="section-kicker">饮食</span>
+              <h3>日均营养估算</h3>
+            </div>
+            <span class="subtle" id="mealDaysLabel">确认后的记录</span>
+          </div>
+          <div class="macro-list" id="macroList"></div>
+        </article>
+
+        <article class="chart-card spending-card">
+          <div class="card-heading">
+            <div>
+              <span class="section-kicker">消费</span>
+              <h3>分类构成</h3>
+            </div>
+            <strong id="spendingTotal">¥0</strong>
+          </div>
+          <div class="spending-layout">
+            <div class="donut" id="spendingDonut"><span>本周</span></div>
+            <div class="legend" id="spendingLegend"></div>
+          </div>
+        </article>
+
+        <article class="insight-card">
+          <span class="insight-mark">↗</span>
+          <div>
+            <strong>值得留意</strong>
+            <p id="trendInsight">记录几天后，这里会根据你的真实数据给出简短提示。</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="view" data-view="tasks" aria-label="待办">
+      <header class="app-header page-header">
+        <div>
+          <span class="eyebrow">保持轻松</span>
+          <h2>待办事项</h2>
+        </div>
+        <button class="round-add" id="focusTaskInput" aria-label="添加待办">＋</button>
+      </header>
+      <div class="page-scroll tasks-content">
+        <div class="task-summary">
+          <p>今天</p>
+          <strong id="taskCount">0 件待完成</strong>
+          <div class="progress-track"><span id="taskProgress"></span></div>
+        </div>
+        <form class="task-form" id="taskForm">
+          <input id="taskInput" type="text" maxlength="120" placeholder="添加一件要做的事">
+          <input id="taskDate" type="date" aria-label="截止日期">
+          <button type="submit">添加</button>
+        </form>
+        <div class="task-section">
+          <div class="section-title"><h3>进行中</h3><span id="pendingCount">0</span></div>
+          <div id="pendingTasks" class="task-list"></div>
+        </div>
+        <div class="task-section completed-section">
+          <div class="section-title"><h3>已完成</h3><span id="doneCount">0</span></div>
+          <div id="doneTasks" class="task-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" data-view="settings" aria-label="设置">
+      <header class="app-header page-header">
+        <div>
+          <span class="eyebrow">只属于你</span>
+          <h2>设置</h2>
+        </div>
+        <span class="version-tag">v0.7.0</span>
+      </header>
+      <div class="page-scroll settings-content">
+        <section class="settings-group">
+          <h3>AI 服务</h3>
+          <div class="settings-card">
+            <label class="field-label" for="apiKey">DeepSeek API Key</label>
+            <div class="secret-field">
+              <input id="apiKey" type="password" autocomplete="off" placeholder="sk-…">
+              <button id="toggleKey" type="button">显示</button>
+            </div>
+            <p>仅保存在当前设备，不会进入备份文件。</p>
+          </div>
+        </section>
+
+        <section class="settings-group">
+          <div class="settings-title-row"><h3>个性化助手</h3><span>可直接通过聊天修改</span></div>
+          <div class="settings-card profile-card">
+            <div id="profileSummary"></div>
+            <button id="resetProfile" type="button" class="profile-reset">恢复默认个性化设置</button>
+            <p>例如在聊天中说“以后重点关注睡眠”“我想关注用眼情况”或“建议最多三条”。变更确认后才会生效。</p>
+          </div>
+        </section>
+
+        <section class="settings-group">
+          <h3>数据与备份</h3>
+          <div class="settings-card action-list">
+            <button id="exportJson"><span>导出完整 JSON</span><small>用于恢复</small></button>
+            <button id="exportCsv"><span>导出消费 CSV</span><small>电脑查看</small></button>
+            <label class="import-label" for="importJson"><span>导入备份</span><small>合并记录</small></label>
+            <input id="importJson" type="file" accept="application/json" hidden>
+          </div>
+        </section>
+
+        <section class="settings-group danger-zone">
+          <button id="resetData" class="danger-button">清除本机全部数据</button>
+        </section>
+
+        <p class="privacy-note">大肥鱼助手不会上传你的完整生活数据库。调用 AI 时，只发送完成当前分析所需的记录。</p>
+      </div>
+    </section>
+
+    <div class="entry-editor hidden" id="entryEditor" role="dialog" aria-modal="true" aria-labelledby="entryEditorTitle">
+      <form class="entry-editor-sheet" id="entryEditForm">
+        <div class="entry-editor-header">
+          <div><span id="entryEditorKicker">人工修改</span><h3 id="entryEditorTitle">编辑记录</h3></div>
+          <button id="closeEntryEditor" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="entry-editor-type hidden" id="entryEditTypeWrap">
+          <label>记录类型
+            <select id="entryEditType">
+              <option value="note">生活记录</option>
+              <option value="meal">饮食</option>
+              <option value="expense">消费 / 退款</option>
+              <option value="water">饮水</option>
+              <option value="exercise">运动</option>
+              <option value="sleep">睡眠</option>
+              <option value="life_event">生活事件</option>
+            </select>
+          </label>
+        </div>
+        <div class="entry-editor-common">
+          <label>日期<input id="entryEditDate" type="date" required></label>
+          <label>时间<input id="entryEditTime" type="time" required></label>
+        </div>
+        <div class="entry-editor-fields" id="entryEditorFields"></div>
+        <p class="entry-editor-note">人工保存后会立即更新当天与趋势；原聊天内容不会被改写。</p>
+        <div class="entry-editor-actions">
+          <button id="deleteEditedEntry" type="button" class="entry-delete-button">删除记录</button>
+          <button id="cancelEntryEdit" type="button" class="secondary-button">取消</button>
+          <button id="saveEditedEntry" type="submit" class="confirm-button">保存修改</button>
+        </div>
+      </form>
+    </div>
+
+    <nav class="bottom-nav" aria-label="主要导航">
+      <button class="nav-item active" data-target="chat">
+        <span class="nav-icon">◌</span><span>聊天</span>
+      </button>
+      <button class="nav-item" data-target="day">
+        <span class="nav-icon">□</span><span>当天</span>
+      </button>
+      <button class="nav-item" data-target="trends">
+        <span class="nav-icon">⌁</span><span>趋势</span>
+      </button>
+      <button class="nav-item" data-target="tasks">
+        <span class="nav-icon">✓</span><span>待办</span>
+      </button>
+      <button class="nav-item" data-target="settings">
+        <span class="nav-icon">···</span><span>设置</span>
+      </button>
+    </nav>
+
+    <div class="toast" id="toast" role="status"></div>
+  </main>
+
+  <script src="./record-parser.js"></script>
+    <script src="./record-operations.js"></script>
+    <script src="./profile-core.js"></script>
+  <script src="./assistant-core.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

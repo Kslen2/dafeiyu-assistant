@@ -1,0 +1,59 @@
+plugins {
+    id "com.android.application"
+}
+
+def versionMatcher = file("../../dist/app.js").getText("UTF-8") =~ /const APP_VERSION = "(\d+)\.(\d+)\.(\d+)"/
+if (!versionMatcher.find()) {
+    throw new GradleException("Cannot read APP_VERSION from dist/app.js")
+}
+def versionParts = [versionMatcher.group(1), versionMatcher.group(2), versionMatcher.group(3)].collect { it as int }
+def webVersionName = versionParts.join(".")
+def webVersionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
+
+def signingProperties = new Properties()
+def signingPropertiesFile = rootProject.file("signing/keystore.properties")
+if (!signingPropertiesFile.exists()) {
+    throw new GradleException("Missing signing/keystore.properties; it is required for update-compatible APKs")
+}
+signingPropertiesFile.withInputStream { signingProperties.load(it) }
+
+android {
+    namespace "com.dafeiyu.assistant"
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.dafeiyu.assistant"
+        minSdk 26
+        targetSdk 36
+        versionCode webVersionCode
+        versionName webVersionName
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ["../../dist"]
+        }
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file(signingProperties["storeFile"])
+            storePassword signingProperties["storePassword"]
+            keyAlias signingProperties["keyAlias"]
+            keyPassword signingProperties["keyPassword"]
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

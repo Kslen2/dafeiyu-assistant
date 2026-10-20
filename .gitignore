@@ -1,0 +1,22 @@
+# Android / Gradle build products
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# Release signing credentials stay offline
+android/signing/*
+!android/signing/keystore.properties.example
+
+# Keep only the current distributable APK in Git
+*.apk
+!大肥鱼助手-v0.7.0.apk
+
+# Local development files
+.idea/
+.vscode/
+*.log
+*.tmp
+.demo-browser-profile/
+preview*.png
+
