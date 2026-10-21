@@ -1,4 +1,4 @@
-const APP_VERSION = "0.7.1";
+const APP_VERSION = "0.8.0";
 const SCHEMA_VERSION = 5;
 const DB_NAME = "dafeiyu-assistant-preview-v2";
 const STORE_NAME = "app-state";

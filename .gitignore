@@ -12,6 +12,7 @@ android/signing/*
 *.apk
 !大肥鱼助手-v0.7.0.apk
 !大肥鱼助手-v0.7.1.apk
+!大肥鱼助手-v0.8.0.apk
 
 # Local development files
 .idea/

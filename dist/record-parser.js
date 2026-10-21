@@ -6,20 +6,22 @@
   "use strict";
 
   const CN_DIGITS = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
-  const NUMBER_SOURCE = "(?:\\d+(?:\\.\\d+)?|[零〇一二两三四五六七八九十百千]+(?:点[零〇一二三四五六七八九]+)?)";
+  const NUMBER_SOURCE = "(?:\\d+(?:\\.\\d+)?|[零〇一二两三四五六七八九十百千万]+(?:点[零〇一二三四五六七八九]+)?)";
 
   function numberFromText(value) {
     if (/^\d/.test(value)) return Number(value);
     const [integerPart, decimalPart = ""] = value.split("点");
     let total = 0;
+    let section = 0;
     let current = 0;
     for (const char of integerPart) {
       if (char in CN_DIGITS) current = CN_DIGITS[char];
-      else if (char === "十") { total += (current || 1) * 10; current = 0; }
-      else if (char === "百") { total += (current || 1) * 100; current = 0; }
-      else if (char === "千") { total += (current || 1) * 1000; current = 0; }
+      else if (char === "十") { section += (current || 1) * 10; current = 0; }
+      else if (char === "百") { section += (current || 1) * 100; current = 0; }
+      else if (char === "千") { section += (current || 1) * 1000; current = 0; }
+      else if (char === "万") { total += (section + current || 1) * 10000; section = 0; current = 0; }
     }
-    total += current;
+    total += section + current;
     if (decimalPart) total += Number(`0.${[...decimalPart].map((char) => CN_DIGITS[char] ?? "").join("")}`);
     return total;
   }
@@ -47,10 +49,10 @@
       return { occurredAt: resolved.toISOString(), date: localDateKey(resolved), timeSource: "relative", timeText: (relativeHour || relativeMinute)[0] };
     }
 
-    const dayOffset = /前天/.test(value) ? -2 : /昨天|昨日/.test(value) ? -1 : 0;
+    const dayOffset = /前晚|前天/.test(value) ? -2 : /昨晚|昨夜|昨天|昨日/.test(value) ? -1 : 0;
     if (dayOffset) resolved.setDate(resolved.getDate() + dayOffset);
 
-    const periodSource = "(半夜|凌晨|清晨|早晨|早上|上午|中午|午后|下午|傍晚|晚上|今晚|夜里|睡前|起床后)?";
+    const periodSource = "(前晚|昨晚|昨夜|今早|半夜|凌晨|清晨|早晨|早上|上午|中午|午后|下午|傍晚|晚上|今晚|夜里|睡前|起床后)?";
     const colonPattern = new RegExp(`${periodSource}\\s*(${NUMBER_SOURCE})\\s*[:：]\\s*(\\d{1,2})`, "i");
     const pointPattern = new RegExp(`${periodSource}\\s*(${NUMBER_SOURCE})\\s*点(?:\\s*(半|${NUMBER_SOURCE})\\s*分?)?`, "i");
     const clockMatch = value.match(colonPattern) || value.match(pointPattern);
@@ -59,7 +61,7 @@
       let hour = numberFromText(clockMatch[2]);
       const minuteValue = clockMatch[3];
       const minute = minuteValue === "半" ? 30 : minuteValue ? numberFromText(minuteValue) : 0;
-      if (/午后|下午|傍晚|晚上|今晚|夜里|睡前/.test(period) && hour < 12) hour += 12;
+      if (/前晚|昨晚|昨夜|午后|下午|傍晚|晚上|今晚|夜里|睡前/.test(period) && hour < 12) hour += 12;
       if (/凌晨/.test(period) && hour === 12) hour = 0;
       if (/中午/.test(period) && hour < 11) hour += 12;
       if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
@@ -69,6 +71,8 @@
     }
 
     const periodDefaults = [
+      [/前晚|昨晚|昨夜/, 20, 0],
+      [/今早/, 7, 0],
       [/半夜/, 0, 30],
       [/凌晨/, 2, 0],
       [/清晨/, 6, 30],
@@ -120,12 +124,33 @@
     return text.slice(left, right).trim();
   }
 
-  const ACTIVITY_SOURCE = "打羽毛球|打篮球|踢足球|打乒乓球|打网球|有氧运动|力量训练|动感单车|爬楼梯|俯卧撑|广场舞|跑完步|羽毛球|乒乓球|普拉提|椭圆机|HIIT|慢跑|跑步|跑了|快走|健走|步行|走路|走了|散步|骑车|骑行|单车|游泳|健身|锻炼|运动|力量|有氧|瑜伽|拉伸|跳绳|篮球|足球|网球|爬楼|爬山|登山|划船|深蹲|卷腹|拳击|太极|跳舞|体操|撸铁|打球";
+  function hasCompletedCue(value, actionSource = "") {
+    const action = actionSource ? `(?:${actionSource})` : ".{0,12}";
+    return new RegExp(`(?:刚刚|刚才|已经|刚|${action}了|${action}完|${action}结束)`).test(value);
+  }
+
+  function isQuestionLike(value) {
+    return /[?？]|(?:够吗|好吗|行吗|可以吗|合适吗|有用吗|有效吗|值得吗|值得买吗|会不会|选哪个|怎么|如何)/.test(value);
+  }
+
+  function isPlannedOrRecurring(value, actionSource) {
+    const action = `(?:${actionSource})`;
+    return new RegExp(`(?:打算|计划|准备|预计|希望|想要|想|应该|最好|建议|目标|明天|后天|以后|下次|每天|每日|每晚|每周).{0,16}${action}`).test(value)
+      || new RegExp(`${action}.{0,12}(?:计划|安排|目标)`).test(value);
+  }
+
+  function isNegatedAction(value, actionSource) {
+    const action = `(?:${actionSource})`;
+    return new RegExp(`(?:没|没有|未|还没|并未|不曾|不打算|不准备).{0,8}${action}`).test(value)
+      || new RegExp(`${action}.{0,8}(?:没做|没去|取消|放弃)`).test(value);
+  }
+
+  const ACTIVITY_SOURCE = "打羽毛球|打篮球|踢足球|打乒乓球|打网球|骑自行车|有氧运动|力量训练|动感单车|爬楼梯|俯卧撑|广场舞|跑完步|羽毛球|乒乓球|普拉提|椭圆机|HIIT|慢跑|跑步|跑了|快走|健走|步行|走路|走了|散步|骑车|骑行|骑了|单车|游泳|健身|锻炼|运动|力量|有氧|瑜伽|拉伸|跳绳|篮球|足球|网球|爬楼|爬山|登山|划船|深蹲|卷腹|拳击|太极|跳舞|体操|撸铁|打球";
 
   function normalizeActivity(value) {
     const names = {
       跑了: "跑步", 跑完步: "跑步", 慢跑: "跑步", 走了: "走路", 健走: "快走", 骑行: "骑车", 单车: "骑车",
-      力量: "力量训练", 撸铁: "力量训练", 步行: "走路", 登山: "爬山", 有氧: "有氧运动", 爬楼梯: "爬楼", 打羽毛球: "羽毛球", 打篮球: "篮球", 踢足球: "足球",
+      力量: "力量训练", 撸铁: "力量训练", 步行: "走路", 登山: "爬山", 有氧: "有氧运动", 爬楼梯: "爬楼", 骑了: "骑车", 骑自行车: "骑车", 打羽毛球: "羽毛球", 打篮球: "篮球", 踢足球: "足球",
       打乒乓球: "乒乓球", 打网球: "网球", 打球: "球类运动", 锻炼: "运动"
     };
     return names[value] || value;
@@ -133,10 +158,30 @@
 
   function isHypotheticalAction(clause) {
     const action = `(?:睡|入睡|起床|${ACTIVITY_SOURCE})`;
-    return new RegExp(`(?:想|准备|计划|打算|建议|应该|最好|希望|目标|预计|明天|后天|下次|以后).{0,12}${action}`).test(clause)
+    return isPlannedOrRecurring(clause, `睡|入睡|起床|${ACTIVITY_SOURCE}`)
       || new RegExp(`(?:要不要|能不能|是否|怎么|如何).{0,12}${action}`).test(clause)
       || new RegExp(`(?:没|没有|未|还没|并未)\\s*(?:有)?\\s*${action}`).test(clause)
-      || new RegExp(`${action}.{0,14}(?:怎么样|如何|好吗|可以吗|行吗|是否合适)[？?]?$`).test(clause);
+      || (isQuestionLike(clause) && !hasCompletedCue(clause, `睡|入睡|起床|${ACTIVITY_SOURCE}`))
+      || new RegExp(`${action}.{0,14}(?:怎么样|如何|好吗|可以吗|行吗|是否合适|够吗|有用吗|有效吗)[？?]?$`).test(clause);
+  }
+
+  function isNonCompletedWater(value) {
+    const action = "喝|饮水|补水";
+    if (isNegatedAction(value, action) || isPlannedOrRecurring(value, action)) return true;
+    if (/(?:记得|提醒我|别忘了|待办).{0,16}(?:喝|饮水|补水)/.test(value)) return true;
+    return isQuestionLike(value) && !/(?:刚刚|刚才|已经|刚)?\s*喝了|饮用了|补了水/.test(value);
+  }
+
+  function isNonExpenseContext(segment, wholeValue) {
+    const value = String(segment || "");
+    const explicitCompletedSpend = /花了|消费了?|支付了?|付了|用了|买了|交了|缴了|充了|扣了/.test(value);
+    if (/(?:工资|奖金|收入|补贴|报销).{0,10}(?:到账|收到|发了)|(?:别人|朋友|同事|商家).{0,8}(?:转给我|给我转)|(?:收回|收到了?|到账).{0,8}(?:转账|款|钱)/.test(value)) return true;
+    if (/(?:没有|没|未|并未|不曾).{0,8}(?:花|消费|支付|付款|买)|(?:不买|没买|取消购买|放弃购买)/.test(value)) return true;
+    if (/(?:预算|原价|现价|售价|标价|报价|参考价|价格是)/.test(value)) return true;
+    if (/(?:明天|后天|以后|下次|打算|计划|准备|预计|想要)/.test(value) && !explicitCompletedSpend) return true;
+    if (isQuestionLike(value) && !explicitCompletedSpend) return true;
+    if (/[?？]/.test(wholeValue) && /(?:值得|选哪个|哪个好|便宜|贵不贵|多少钱|几元|价格)/.test(wholeValue) && !explicitCompletedSpend) return true;
+    return false;
   }
 
   function parseMeasurement(value) {
@@ -285,13 +330,15 @@
     const sleep = parseSleep(value);
     if (sleep) entries.push({ type: "sleep", data: sleep.data, label: sleep.label, timeContext: clauseAround(value, sleep.match.index, sleep.match.index + sleep.match[0].length) });
 
-    const waterPattern = new RegExp(`(?:喝水|喝了?|饮水|补水)\\s*(?:大约|约)?\\s*(${NUMBER_SOURCE})\\s*(ml|毫升|升|l|杯)(?=\\s*(?:水|[，,。；;！？!?、\\n]|$))`, "gi");
+    const waterPattern = new RegExp(`(?:喝(?:了)?|饮水(?:量)?|补水)\\s*(?:了\\s*)?(?:(?:一|两|二)\\s*(?:瓶|壶)\\s*)?(?:水\\s*)?(?:大约|大概|约)?\\s*(${NUMBER_SOURCE})\\s*(ml|毫升|升|l|杯)(?=\\s*(?:的?水|[，,。；;！？!?、\\n]|$))`, "gi");
     let match;
     while ((match = waterPattern.exec(value)) !== null) {
+      const segment = clauseAround(value, match.index, waterPattern.lastIndex);
+      if (isNonCompletedWater(segment)) continue;
       const amount = numberFromText(match[1]);
       const unit = match[2].toLowerCase();
       const ml = unit === "升" || unit === "l" ? amount * 1000 : unit === "杯" ? amount * 250 : amount;
-      entries.push({ type: "water", data: { ml }, label: `饮水 ${ml}ml`, timeContext: clauseAround(value, match.index, waterPattern.lastIndex) });
+      entries.push({ type: "water", data: { ml }, label: `饮水 ${ml}ml`, timeContext: segment });
     }
 
     const measurementSource = `(?:(?:半|${NUMBER_SOURCE})\\s*(?:个)?\\s*(?:半)?\\s*(?:小时|钟头|h)(?:\\s*${NUMBER_SOURCE}\\s*(?:分钟|分|min))?|${NUMBER_SOURCE}\\s*(?:分钟|分|min|公里|千米|km|米|步|下|个|次|组))`;
@@ -329,16 +376,17 @@
       if (rawActivity) entries.push({ type: "exercise", data: { activity: normalizeActivity(rawActivity) }, label: `${normalizeActivity(rawActivity)} 已完成`, timeContext: clause });
     });
 
-    const expensePattern = new RegExp(`(${NUMBER_SOURCE})\\s*(块钱|元|块)([零〇一二两三四五六七八九])?(?!钟)`, "g");
+    const expensePattern = new RegExp(`(${NUMBER_SOURCE})\\s*(块钱|元|块)([零〇一二两三四五六七八九\\d])?(?!钟)`, "g");
     while ((match = expensePattern.exec(value)) !== null) {
       const segment = clauseAround(value, match.index, expensePattern.lastIndex);
+      if (isNonExpenseContext(segment, value)) continue;
       const unit = match[2];
       const hasMoneyCue = /花了?|消费|支付|付了?|用了?|价格|票价|车费|收了?|买了?|公交|地铁|打车|房租|水费|电费|燃气|物业/.test(segment);
       const trailingChar = value[expensePattern.lastIndex] || "";
       if (unit === "块" && !match[3] && /[\u4e00-\u9fff]/.test(trailingChar)) continue;
       if (unit === "块" && !match[3] && !hasMoneyCue) continue;
       let amount = numberFromText(match[1]);
-      if (unit === "块" && match[3]) amount += CN_DIGITS[match[3]] / 10;
+      if (unit === "块" && match[3]) amount += (/^\d$/.test(match[3]) ? Number(match[3]) : CN_DIGITS[match[3]]) / 10;
       const segmentCategory = expenseCategory(segment);
       const category = segmentCategory === "其他" ? expenseCategory(value) : segmentCategory;
       entries.push({ type: "expense", data: { amount, category, note: segment.slice(0, 60) }, label: `${category}消费 ¥${amount.toFixed(2).replace(/\.00$/, "")}`, timeContext: segment });
@@ -350,13 +398,16 @@
       if (/^(?:元|块钱|块)/.test(trailing)) continue;
       const amount = numberFromText(match[2]);
       const segment = clauseAround(value, match.index, unitlessExpensePattern.lastIndex);
+      if (isNonExpenseContext(segment, value)) continue;
       const segmentCategory = expenseCategory(segment);
       const category = segmentCategory === "其他" ? expenseCategory(value) : segmentCategory;
       entries.push({ type: "expense", data: { amount, category, note: segment.slice(0, 60) }, label: `${category}消费 ¥${amount.toFixed(2).replace(/\.00$/, "")}`, timeContext: segment });
     }
 
     const dueOffset = /后天/.test(value) ? 2 : /明天/.test(value) ? 1 : /今天|今晚/.test(value) ? 0 : null;
-    const todoMatch = value.match(/(?:待办|记得|要做|别忘了|提醒我)[:：]?\s*(.+)/) || value.match(/把\s*(.+?)\s*加入待办/);
+    const taskQuery = /[?？]/.test(value) && /(?:待办|要做什么|有什么要做|有什么事|提醒.{0,6}什么)/.test(value)
+      || /(?:查看|看看|列出|告诉我).{0,8}(?:待办|任务|事项)/.test(value);
+    const todoMatch = taskQuery ? null : value.match(/(?:待办|记得|要做|别忘了|提醒我)[:：]?\s*(.+)/) || value.match(/把\s*(.+?)\s*加入待办/);
     if (todoMatch) {
       const taskText = todoMatch[1].replace(/^(?:今天|今晚|明天|后天)\s*/, "").trim();
       if (taskText) tasks.push({ text: taskText, dueOffset, label: `待办“${taskText}”` });
@@ -374,6 +425,11 @@
     const value = String(text || "").trim();
     const isFoodQuestion = /(?:吃了?(?:什么|啥)|吃什么|吃啥|吃得(?:怎么样|如何|好吗)|该吃什么|推荐.{0,8}吃|(?:今天|最近).{0,8}(?:饮食|吃得).{0,8}(?:怎么样|如何|好吗))/.test(value);
     if (isFoodQuestion) return false;
+    const hasPastEatingAction = /(?:刚刚|刚才|已经|刚)?\s*(?:吃了|喝了|尝了|吃完|喝完)|来了一(?:份|包|碗|盘|杯)/.test(value);
+    const negatedEating = /(?:没|没有|还没|未|并未)\s*(?:有)?\s*(?:吃|喝)(?!完)|(?:不|别)\s*(?:吃|喝)|(?:早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|零食|食物).{0,8}(?:没吃|没有吃|未吃|不吃)|(?:买了?|拿了?).{0,18}(?:还没吃|没有吃|未吃)/.test(value);
+    const plannedEating = /(?:明天|后天|以后|下次|打算|计划|准备|预计|想要|想).{0,18}(?:吃|喝|早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵)/.test(value);
+    const hypotheticalEating = /^(?:如果|假如|要是)|(?:会不会|要不要|该不该).{0,12}(?:吃|喝)|(?:吃|喝).{0,12}(?:会不会|要不要|该不该)/.test(value);
+    if (negatedEating || ((!hasPastEatingAction) && (plannedEating || hypotheticalEating))) return false;
     const hasMealWord = /早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|零食|加餐/.test(value);
     const hasEatingAction = /(?:吃(?:了)?(?!完|饭(?:前|后))|尝了|来了一份|来了一包|来了一碗|来了一盘)/.test(value);
     const hasDrinkAction = /(?:喝了?|饮用|来了一杯).{0,12}(?:酸奶|牛奶|咖啡|奶茶|果汁|西瓜汁|饮料|可乐|豆浆)/.test(value);
@@ -439,10 +495,12 @@
   function isUniversalLifeEventCandidate(text) {
     const value = String(text || "").trim();
     if (!value || value.length > 260 || /[?？]/.test(value)) return false;
-    if (/^(?:如果|假如|要是|打算|计划|准备|想要|想去|可能|也许|建议|推荐|帮我|请问|怎么|为什么|如何|能不能|可以不)/.test(value)) return false;
+    if (/^(?:我\s*)?(?:如果|假如|要是|打算|计划|准备|想要|想去|可能|也许|建议|推荐|帮我|请问|怎么|为什么|如何|能不能|可以不)/.test(value)) return false;
     if (/^(?:删除|清空|总结|分析|查看|告诉我|记录一下|记一下|随手记)/.test(value)) return false;
-    const timedCompletedEvent = /(?:刚刚|刚才|今天|上午|中午|下午|晚上|昨晚|昨天(?:上午|中午|下午|晚上)?|下班后|工作后|久坐后|用眼后|睡前|起床后|到家后|饭后|连续).{0,36}(?:去了|到了|开始|结束|完成|做了|做完|看了|读了|学了|学习|工作|开会|通勤|坐车|整理|收拾|打扫|洗了|买了|收到|见了|聊了|玩了|听了|写了|休息|午睡|晒太阳|护肤|洗澡|做饭|做家务|加班|下班|上班|出门|回家|眼睛|肩膀|颈椎|腰|背|手腕|不舒服|疼|酸|干|累|胀)/.test(value);
-    const explicitCompletedEvent = /(?:整理了|收拾了|打扫了|完成了|看了|读了|学习了|工作了|开了会|见了|聊了|玩了|听了|写了|洗了|做了|去了|回家了|到家了)/.test(value);
+    if (/(?:打算|计划|准备|预计|可能|也许|想要|想去).{0,24}(?:去|开始|结束|完成|做|看|读|学|工作|开会|整理|收拾|打扫|洗|买|见|聊|玩|听|写|休息|护肤|洗澡|做饭|加班|上班|出门|回家)/.test(value)) return false;
+    if (/(?:没|没有|未|还没|并未).{0,12}(?:去|完成|做|看|读|学习|工作|开会|整理|收拾|打扫|洗|买|见|聊|玩|听|写)/.test(value)) return false;
+    const timedCompletedEvent = /(?:刚刚|刚才|刚|今天|上午|中午|下午|晚上|昨晚|昨天(?:上午|中午|下午|晚上)?|下班后|工作后|久坐后|用眼后|睡前|起床后|到家后|饭后|连续).{0,36}(?:去了|到了|开始|结束|完成|做了|做完|看了|读了|学了|学习|工作|开会|开完会|开了(?:个|一场)?会|通勤|坐车|整理|收拾|打扫|洗了|买了|收到|见了|聊了|玩了|听了|写了|休息|午睡|晒太阳|护肤|洗澡|做饭|做家务|加班|下班|上班|出门|回家|眼睛|肩膀|颈椎|腰|背|手腕|不舒服|疼|酸|干|累|胀)/.test(value);
+    const explicitCompletedEvent = /(?:整理了|收拾了|打扫了|完成了|看了|读了|学习了|工作了|开完会|开了(?:个|一场)?会|买了|收到了?|见了|聊了|玩了|听了|写了|洗了|做了|去了|回家了|到家了)/.test(value);
     const bodySignal = /(?:眼睛|肩膀|颈椎|腰|背|手腕).{0,10}(?:不舒服|疼|痛|酸|干|涩|累|胀)/.test(value);
     return timedCompletedEvent || explicitCompletedEvent || bodySignal;
   }
