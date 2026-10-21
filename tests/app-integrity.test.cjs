@@ -35,6 +35,8 @@ assert.match(app, /exported\.settings\.apiKey\s*=\s*""/, "backup must exclude AP
 assert.match(app, /FeiyuRecordOps\.dayMetrics/, "day screen must use tested aggregation");
 assert.match(app, /FeiyuRecordOps\.trendMetrics/, "trend screen must use tested aggregation");
 assert.match(app, /pendingMealClarificationContext\(\)/, "meal clarification replies must stay in the structured meal flow");
+assert.match(app, /FeiyuRecords\.isMealEstimateRequest/, "meal estimates must use the tested intent boundary instead of a broad calorie regex");
+assert.match(app, /mealRecordedAt = currentHasFood[\s\S]{0,180}resolveEventTime/, "historical meal estimates must retain the user-stated meal date when confirmed");
 assert.match(app, /await confirmMeal\(pendingMessage\.id\)/, "typed meal confirmation must perform a real database confirmation");
 assert.match(app, /repairEmbeddedMealExpenses\(\)/, "older meal notes with embedded expenses must be repaired on migration");
 assert.match(app, /repairMisclassifiedSleepEntries\(\)/, "misclassified sleep notes must be repaired on migration");
@@ -61,6 +63,7 @@ assert.match(app, /profile:\s*currentProfile\(\)/, "AI calls must receive the ac
 assert.match(app, /FeiyuProfile\.normalize/, "older installs must migrate to a normalized profile");
 assert.match(app, /imported\.settings\?\.profile[\s\S]{0,120}FeiyuProfile\.normalize/, "complete backup import must restore personalized settings without replacing the API key");
 assert.match(core, /https:\/\/api\.deepseek\.com\/chat\/completions/, "AI endpoint must use HTTPS");
+assert.match(core, /日维持热量或可靠的全天总消耗/, "calorie deficit answers must require a valid expenditure baseline");
 assert.equal(manifest.name, "大肥鱼助手");
 for (const icon of manifest.icons || []) assert.ok(fs.existsSync(path.join(root, "dist", icon.src)), `manifest icon must exist: ${icon.src}`);
 

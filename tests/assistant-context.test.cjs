@@ -53,6 +53,18 @@ vm.runInNewContext(source, sandbox, { filename: "assistant-core.js" });
   assert.match(chatPrompt, /用眼情况/);
   assert.doesNotMatch(chatPrompt, /test-key/);
 
+  const deficitEntries = [
+    { type: "meal", date: "2026-10-20", occurredAt: "2026-10-20T04:30:00.000Z", timeSource: "explicit", data: { name: "午饭", calories: 720, protein: 32, carbs: 88, fat: 24 } },
+    { type: "exercise", date: "2026-10-20", occurredAt: "2026-10-20T11:30:00.000Z", timeSource: "explicit", data: { activity: "快走", minutes: 40 } }
+  ];
+  await sandbox.window.FeiyuAI.chat({ apiKey: "test-key", text: "算一下我昨日的热量缺口", entries: deficitEntries, tasks: [], profile });
+  const deficitRequest = requests[2];
+  assert.match(deficitRequest.messages.at(-1).content, /算一下我昨日的热量缺口/);
+  assert.match(deficitRequest.messages.at(-1).content, /"calories":720/);
+  assert.match(deficitRequest.messages.at(-1).content, /"minutes":40/);
+  assert.match(deficitRequest.messages[0].content, /只有已知用户的日维持热量或可靠的全天总消耗时/);
+  assert.match(deficitRequest.messages[0].content, /不得把这种统计查询当成一顿餐食/);
+
   console.log("PASS AI life-record and task-context contracts (mocked)");
 })().catch((error) => {
   console.error(error);

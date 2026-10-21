@@ -1,4 +1,4 @@
-const APP_VERSION = "0.8.0";
+const APP_VERSION = "0.8.1";
 const SCHEMA_VERSION = 5;
 const DB_NAME = "dafeiyu-assistant-preview-v2";
 const STORE_NAME = "app-state";
@@ -425,7 +425,7 @@ function createMealEstimate(text = "午饭照片") {
 }
 
 function isMealEstimateRequest(text) {
-  return /算.*(?:摄入|热量)|(?:摄入|热量).*算|西瓜汁|果汁/.test(text);
+  return window.FeiyuRecords.isMealEstimateRequest(text);
 }
 
 function isFoodRecordRequest(text) {
@@ -963,7 +963,10 @@ async function handleSend() {
       const context = currentHasFood ? null : recentMealContext();
       const analysisText = context ? `${context.description}\n用户追问：${text}` : text;
       const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text: analysisText, imageDataUrl: "", profile: currentProfile() });
-      addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, sourceEntryId: context?.sourceEntryId || null, recordedText: currentHasFood ? text : context?.description || text });
+      const mealRecordedAt = currentHasFood
+        ? window.FeiyuRecords.resolveEventTime(window.FeiyuRecords.foodTimeContext(text), userMessage.createdAt).occurredAt
+        : undefined;
+      addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, sourceEntryId: context?.sourceEntryId || null, recordedText: currentHasFood ? text : context?.description || text, mealRecordedAt });
     } else if (isFoodRecordRequest(text)) {
       const otherRecords = isStructuredRecordRequest(text) ? parseAndRecord(text) : { labels: [], entryIds: [], taskIds: [], date: "" };
       const pendingMeal = addEntry("meal_note", { description: text, analyzed: false }, text, new Date(), window.FeiyuRecords.foodTimeContext(text));

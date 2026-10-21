@@ -442,6 +442,24 @@
     return hasEatingAction || hasDrinkAction || (hasMealWord && !isExpenseOnlyMeal && !mealUsedOnlyAsTiming);
   }
 
+  function isMealEstimateRequest(text) {
+    const value = String(text || "").trim();
+    if (!value) return false;
+
+    // “热量缺口”和跨整天/整段时间的总量问题需要读取历史记录，不能伪装成一顿新餐食。
+    const energyBalanceQuery = /(?:热量|能量).{0,4}(?:缺口|差额|赤字|盈余|结余)|(?:缺口|差额|赤字|盈余|结余).{0,6}(?:热量|能量)|(?:摄入|热量).{0,8}(?:和|与|减|对比).{0,8}(?:消耗|支出)|(?:消耗|支出).{0,8}(?:和|与|减|对比).{0,8}(?:摄入|热量)/.test(value);
+    const periodTotalQuery = /(?:今天|今日|昨天|昨日|前天|本周|这周|上周|本月|这个月|全天|整天|最近|过去).{0,16}(?:总摄入|总热量|摄入(?:了)?多少|(?:吃了|喝了)多少(?:热量|千卡|大卡|卡路里)?|多少(?:热量|千卡|大卡|卡路里)|消耗(?:了)?多少|热量(?:总共|一共)|热量情况)|(?:总摄入|总热量|全天(?:摄入|热量)|整天(?:摄入|热量)).{0,12}(?:多少|算|计算|估算|统计|情况)?/.test(value);
+    if (energyBalanceQuery || periodTotalQuery) return false;
+
+    const calculateCue = /(?:算|计算|估算|核算|看看|查).{0,14}(?:摄入|热量|千卡|大卡|卡路里)|(?:摄入|热量|千卡|大卡|卡路里).{0,14}(?:多少|怎么算|计算|估算|算一下)|(?:多少|几).{0,6}(?:热量|千卡|大卡|卡路里)/.test(value);
+    if (!calculateCue) return false;
+
+    // 允许“算一下热量”承接最近一顿，也允许在同一句里描述具体食物。
+    const mealCue = /这顿|这餐|这一顿|这一餐|早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|加餐|零食|刚才|刚刚|吃了|喝了|图片|照片|食物|饮料|果汁|西瓜汁|咖啡|奶茶|牛奶|豆浆|米饭|面|粉|粥|肉|鸡|鸭|鱼|虾|蛋|菜|水果/.test(value);
+    const bareFollowUp = /^(?:帮我)?(?:算|计算|估算)(?:一下)?(?:这(?:个|顿|餐|次))?(?:的)?(?:摄入|热量|千卡|大卡|卡路里)[吧。！!？?]*$/.test(value);
+    return mealCue || bareFollowUp || isFoodRecordRequest(value);
+  }
+
   function isMealCorrectionRequest(text) {
     const value = String(text || "").trim();
     if (!value || value.length > 180) return false;
@@ -566,5 +584,5 @@
     return /^(?:你好|嗨|哈喽|hello|hi|在吗|早上好|下午好|晚上好)[!！。,.，?？~～]*$/i.test(String(text || "").trim());
   }
 
-  return { numberFromText, resolveEventTime, resolveSleepTiming, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealCorrectionRequest, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting };
+  return { numberFromText, resolveEventTime, resolveSleepTiming, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealEstimateRequest, isMealCorrectionRequest, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting };
 });

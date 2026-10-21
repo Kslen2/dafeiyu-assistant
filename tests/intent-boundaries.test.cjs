@@ -6,9 +6,31 @@ let passed = 0;
 function route(text) {
   if (parser.parseDeleteRequest(text)) return "delete";
   if (parser.needsAIEventInterpretation(text)) return "ai";
+  if (parser.isMealEstimateRequest(text)) return "meal-estimate";
   if (parser.isFoodRecordRequest(text)) return "food";
   if (parser.isStructuredRecordRequest(text)) return "structured";
   return "chat";
+}
+
+const mealEstimateRoutingCases = [
+  ["算一下我昨日的热量缺口", false],
+  ["昨天摄入了多少热量", false],
+  ["算一下今天总摄入", false],
+  ["我本周热量赤字是多少", false],
+  ["今天摄入和消耗差多少", false],
+  ["统计一下这个月的总热量", false],
+  ["昨天我一共吃了多少大卡", false],
+  ["算下昨日的热量是多少", false],
+  ["算一下这顿饭的热量", true],
+  ["算一下刚才午饭的摄入", true],
+  ["这杯西瓜汁多少热量", true],
+  ["算一下热量", true],
+  ["我刚喝了一杯西瓜汁，算一下摄入", true]
+];
+
+for (const [text, expected] of mealEstimateRoutingCases) {
+  assert.equal(parser.isMealEstimateRequest(text), expected, `${text}: meal estimate routing`);
+  passed += 1;
 }
 
 function signature(entry) {
