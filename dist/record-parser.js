@@ -423,9 +423,16 @@
 
   function isFoodRecordRequest(text) {
     const value = String(text || "").trim();
-    const isFoodQuestion = /(?:吃了?(?:什么|啥)|吃什么|吃啥|吃得(?:怎么样|如何|好吗)|该吃什么|推荐.{0,8}吃|(?:今天|最近).{0,8}(?:饮食|吃得).{0,8}(?:怎么样|如何|好吗))/.test(value);
-    if (isFoodQuestion) return false;
     const hasPastEatingAction = /(?:刚刚|刚才|已经|刚)?\s*(?:吃了|喝了|尝了|吃完|喝完)|来了一(?:份|包|碗|盘|杯)/.test(value);
+    const mealSource = "早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|加餐";
+    const isFoodHistoryQuestion = /(?:吃了?(?:什么|啥)|(?:今天|昨天|最近).{0,8}(?:吃过|吃了).{0,5}(?:什么|啥)|(?:今天|最近).{0,8}(?:饮食|吃得).{0,8}(?:怎么样|如何|好吗))/.test(value);
+    if (isFoodHistoryQuestion) return false;
+    const isFoodAdviceQuestion = /(?:吃什么|吃啥|吃得(?:怎么样|如何|好吗)|该吃什么|推荐.{0,12}(?:吃|喝|搭配))/.test(value)
+      || new RegExp(`(?:有没有|有没|有什么|求|给我|帮我).{0,14}(?:${mealSource})?.{0,6}(?:推荐|建议)`).test(value)
+      || new RegExp(`(?:${mealSource}).{0,14}(?:推荐|建议|吃什么|吃啥|怎么(?:吃|搭配)|如何(?:吃|搭配))`).test(value)
+      || new RegExp(`(?:推荐|建议).{0,14}(?:${mealSource}|吃|喝|搭配)`).test(value)
+      || /(?:吃|喝|搭配).{0,14}(?:怎么样|合适吗|好吗|行吗|可以吗)|(?:怎么|如何).{0,14}(?:吃|喝|搭配|做)|(?:能|可以).{0,8}(?:做|吃).{0,8}(?:什么|啥|哪种|哪个)/.test(value);
+    if (isFoodAdviceQuestion && !hasPastEatingAction) return false;
     const negatedEating = /(?:没|没有|还没|未|并未)\s*(?:有)?\s*(?:吃|喝)(?!完)|(?:不|别)\s*(?:吃|喝)|(?:早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|零食|食物).{0,8}(?:没吃|没有吃|未吃|不吃)|(?:买了?|拿了?).{0,18}(?:还没吃|没有吃|未吃)/.test(value);
     const plannedEating = /(?:明天|后天|以后|下次|打算|计划|准备|预计|想要|想).{0,18}(?:吃|喝|早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵)/.test(value);
     const hypotheticalEating = /^(?:如果|假如|要是)|(?:会不会|要不要|该不该).{0,12}(?:吃|喝)|(?:吃|喝).{0,12}(?:会不会|要不要|该不该)/.test(value);
