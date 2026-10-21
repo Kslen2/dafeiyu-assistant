@@ -123,6 +123,11 @@ const mealCorrectionCases = [
   ["普通问候", "你好", false],
   ["睡眠不足不是餐食", "今天睡了不到7小时", false],
   ["饮食建议不是修正", "建议我晚饭吃什么", false],
+  ["每日脂肪建议不是修正", "正常来说一天应该摄入多少脂肪比较合适", false],
+  ["每日蛋白质建议不是修正", "一天蛋白质推荐量是多少", false],
+  ["营养标准咨询不是修正", "成年人每天碳水标准是多少", false],
+  ["明确脂肪修正", "这顿脂肪应该是12克", true],
+  ["明确蛋白质修正", "蛋白质改成30克", true],
   ["消费不是修正", "公交只花了5元", false]
 ];
 for (const [name, text, expected] of mealCorrectionCases) {
@@ -150,6 +155,8 @@ const mealClarificationResponses = [
   ["肯德基套餐明细", "一个香辣鸡腿堡，小份薯条，三个热辣香骨鸡，一杯中杯可乐", true],
   ["简单份量补充", "大概半碗，还加了一个鸡蛋", true],
   ["新的生活提问", "我今天喝了多少水？", false],
+  ["每日营养咨询", "一天应该摄入多少脂肪比较合适", false],
+  ["蛋白质推荐量咨询", "每天蛋白质推荐量是多少", false],
   ["切换到总结", "总结今天", false]
 ];
 for (const [name, text, expected] of mealClarificationResponses) {

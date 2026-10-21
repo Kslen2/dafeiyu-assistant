@@ -130,7 +130,7 @@
   }
 
   function isQuestionLike(value) {
-    return /[?？]|(?:够吗|好吗|行吗|可以吗|合适吗|有用吗|有效吗|值得吗|值得买吗|会不会|会怎样|会怎么样|要不要|该不该|应不应该|是否|需不需要|选哪个|怎么|如何)/.test(value);
+    return /[?？]|(?:够吗|好吗|行吗|可以吗|合适吗|比较合适|有用吗|有效吗|值得吗|值得买吗|会不会|会怎样|会怎么样|要不要|该不该|应不应该|是否|需不需要|多少|推荐量|标准(?:是|为|有)?多少|选哪个|怎么|如何)/.test(value);
   }
 
   function isPlannedOrRecurring(value, actionSource) {
@@ -479,6 +479,8 @@
   function isMealCorrectionRequest(text) {
     const value = String(text || "").trim();
     if (!value || value.length > 180) return false;
+    const generalNutritionQuestion = /(?:一天|每天|每日|每餐|正常来说|一般来说|通常|成年人).{0,24}(?:摄入|需要|应该|建议|推荐|合适|标准)|(?:热量|蛋白质|碳水|脂肪|营养).{0,16}(?:推荐量|标准|多少|合适)/.test(value);
+    if (isQuestionLike(value) || generalNutritionQuestion) return false;
     const correctionCue = /其实|实际|应该|大概|大约|约莫|不是|改成|算作|只有|只吃|没吃完|剩了|不足|不到|少于|多于|一半|半份|半包|小包装|大包装|净含量|营养成分|没有那么多|没那么多/;
     const mealCue = /克|千克|公斤|g\b|kg\b|毫升|ml\b|升\b|包|碗|盘|份|杯|口|根|片|个|食物|餐|饭|面|粉|粥|肉|鸡|鸭|鱼|虾|蛋|奶|水果|蔬菜|零食|饮料|油|糖|酱|热量|蛋白质|碳水|脂肪|营养|吃/i;
     return correctionCue.test(value) && mealCue.test(value);
@@ -498,7 +500,8 @@
   function isMealClarificationResponse(text) {
     const value = String(text || "").trim();
     if (!value || value.length > 240 || isMealClarificationCancellation(value)) return false;
-    if (/[?？]/.test(value) || /^(?:你好|嗨|哈喽|总结|删除|清空|待办|提醒我|记录一下)/.test(value)) return false;
+    const generalNutritionQuestion = /(?:一天|每天|每日|每餐|正常来说|一般来说|通常|成年人).{0,24}(?:摄入|需要|应该|建议|推荐|合适|标准)|(?:热量|蛋白质|碳水|脂肪|营养).{0,16}(?:推荐量|标准|多少|合适)/.test(value);
+    if (isQuestionLike(value) || generalNutritionQuestion || /^(?:你好|嗨|哈喽|总结|删除|清空|待办|提醒我|记录一下)/.test(value)) return false;
     return /(?:个|份|碗|盘|杯|包|克|两|半|大|中|小|套餐|汉堡|鸡|肉|鱼|虾|蛋|饭|面|粉|粥|薯|菜|汤|饮料|可乐|咖啡|奶茶|果汁|没吃完|吃了)/.test(value);
   }
 

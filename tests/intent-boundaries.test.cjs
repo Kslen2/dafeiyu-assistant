@@ -33,6 +33,18 @@ for (const [text, expected] of mealEstimateRoutingCases) {
   passed += 1;
 }
 
+const pendingMealIsolationCases = [
+  "正常来说一天应该摄入多少脂肪比较合适",
+  "一天蛋白质推荐量是多少",
+  "成年人每天碳水标准是多少",
+  "每天摄入多少热量合适"
+];
+for (const text of pendingMealIsolationCases) {
+  assert.equal(parser.isMealCorrectionRequest(text), false, `${text}: must not revise a pending meal`);
+  assert.equal(parser.isMealClarificationResponse(text), false, `${text}: must not answer a meal clarification`);
+  passed += 2;
+}
+
 function signature(entry) {
   if (entry.type === "water") return `water:${entry.data.ml}`;
   if (entry.type === "expense") return `expense:${entry.data.amount}:${entry.data.category}`;
