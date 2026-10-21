@@ -130,7 +130,7 @@
   }
 
   function isQuestionLike(value) {
-    return /[?？]|(?:够吗|好吗|行吗|可以吗|合适吗|有用吗|有效吗|值得吗|值得买吗|会不会|选哪个|怎么|如何)/.test(value);
+    return /[?？]|(?:够吗|好吗|行吗|可以吗|合适吗|有用吗|有效吗|值得吗|值得买吗|会不会|会怎样|会怎么样|要不要|该不该|应不应该|是否|需不需要|选哪个|怎么|如何)/.test(value);
   }
 
   function isPlannedOrRecurring(value, actionSource) {
@@ -158,7 +158,8 @@
 
   function isHypotheticalAction(clause) {
     const action = `(?:睡|入睡|起床|${ACTIVITY_SOURCE})`;
-    return isPlannedOrRecurring(clause, `睡|入睡|起床|${ACTIVITY_SOURCE}`)
+    return /^(?:如果|假如|要是)/.test(clause)
+      || isPlannedOrRecurring(clause, `睡|入睡|起床|${ACTIVITY_SOURCE}`)
       || new RegExp(`(?:要不要|能不能|是否|怎么|如何).{0,12}${action}`).test(clause)
       || new RegExp(`(?:没|没有|未|还没|并未)\\s*(?:有)?\\s*${action}`).test(clause)
       || (isQuestionLike(clause) && !hasCompletedCue(clause, `睡|入睡|起床|${ACTIVITY_SOURCE}`))
@@ -169,7 +170,8 @@
     const action = "喝|饮水|补水";
     if (isNegatedAction(value, action) || isPlannedOrRecurring(value, action)) return true;
     if (/(?:记得|提醒我|别忘了|待办).{0,16}(?:喝|饮水|补水)/.test(value)) return true;
-    return isQuestionLike(value) && !/(?:刚刚|刚才|已经|刚)?\s*喝了|饮用了|补了水/.test(value);
+    const completed = /(?:刚刚|刚才|已经)\s*(?:喝了?|饮用(?:了)?|补了水)|刚\s*喝(?:了)?|喝了|饮用了|补了水/.test(value);
+    return isQuestionLike(value) && !completed;
   }
 
   function isNonExpenseContext(segment, wholeValue) {
@@ -177,7 +179,7 @@
     const explicitCompletedSpend = /花了|消费了?|支付了?|付了|用了|买了|交了|缴了|充了|扣了/.test(value);
     if (/(?:工资|奖金|收入|补贴|报销).{0,10}(?:到账|收到|发了)|(?:别人|朋友|同事|商家).{0,8}(?:转给我|给我转)|(?:收回|收到了?|到账).{0,8}(?:转账|款|钱)/.test(value)) return true;
     if (/(?:没有|没|未|并未|不曾).{0,8}(?:花|消费|支付|付款|买)|(?:不买|没买|取消购买|放弃购买)/.test(value)) return true;
-    if (/(?:预算|原价|现价|售价|标价|报价|参考价|价格是)/.test(value)) return true;
+    if (/(?:预算|原价|现价|售价|标价|报价|参考价|价格是|控制在|限制在|不超过|至多|最多|上限|消费目标|花费目标|以内)/.test(value) && !explicitCompletedSpend) return true;
     if (/(?:明天|后天|以后|下次|打算|计划|准备|预计|想要)/.test(value) && !explicitCompletedSpend) return true;
     if (isQuestionLike(value) && !explicitCompletedSpend) return true;
     if (/[?？]/.test(wholeValue) && /(?:值得|选哪个|哪个好|便宜|贵不贵|多少钱|几元|价格)/.test(wholeValue) && !explicitCompletedSpend) return true;
@@ -270,7 +272,9 @@
     const quality = value.match(/睡得\s*(很好|不错|还行|一般|不好|很差|不太好|挺好)/);
     const poorQuality = value.match(/(?:昨晚|昨天晚上|夜里)?\s*(?:没睡好|睡眠不好)/);
     const qualityMatch = score || quality || poorQuality;
-    if (qualityMatch && (poorQuality || !isHypotheticalAction(clauseAround(value, qualityMatch.index, qualityMatch.index + qualityMatch[0].length)))) {
+    const explicitPastPoorQuality = poorQuality && /(?:前晚|昨晚|昨夜|昨天晚上|刚刚|刚才)/.test(value);
+    const qualityClause = qualityMatch ? clauseAround(value, qualityMatch.index, qualityMatch.index + qualityMatch[0].length) : "";
+    if (qualityMatch && (explicitPastPoorQuality || !isHypotheticalAction(qualityClause))) {
       data = data || {};
       if (score) data.qualityScore = numberFromText(score[1]);
       if (quality) data.quality = quality[1];
@@ -406,7 +410,10 @@
 
     const dueOffset = /后天/.test(value) ? 2 : /明天/.test(value) ? 1 : /今天|今晚/.test(value) ? 0 : null;
     const taskQuery = /[?？]/.test(value) && /(?:待办|要做什么|有什么要做|有什么事|提醒.{0,6}什么)/.test(value)
-      || /(?:查看|看看|列出|告诉我).{0,8}(?:待办|任务|事项)/.test(value);
+      || /(?:查看|看看|列出|告诉我).{0,8}(?:待办|任务|事项)/.test(value)
+      || /(?:今天|今晚|明天|后天)?\s*(?:要做|需要做)\s*(?:什么|啥|哪些|哪件)/.test(value)
+      || /(?:有什么|有哪些).{0,8}(?:要做|需要做|待办|任务|事项|安排|事情)/.test(value)
+      || /(?:没有|没什么|暂无).{0,8}(?:要做的事|待办|任务|事项|安排)/.test(value);
     const todoMatch = taskQuery ? null : value.match(/(?:待办|记得|要做|别忘了|提醒我)[:：]?\s*(.+)/) || value.match(/把\s*(.+?)\s*加入待办/);
     if (todoMatch) {
       const taskText = todoMatch[1].replace(/^(?:今天|今晚|明天|后天)\s*/, "").trim();
@@ -433,6 +440,8 @@
       || new RegExp(`(?:推荐|建议).{0,14}(?:${mealSource}|吃|喝|搭配)`).test(value)
       || /(?:吃|喝|搭配).{0,14}(?:怎么样|合适吗|好吗|行吗|可以吗)|(?:怎么|如何).{0,14}(?:吃|喝|搭配|做)|(?:能|可以).{0,8}(?:做|吃).{0,8}(?:什么|啥|哪种|哪个)/.test(value);
     if (isFoodAdviceQuestion && !hasPastEatingAction) return false;
+    const isMealBudgetOrGoal = new RegExp(`(?:${mealSource}).{0,16}(?:预算|控制在|限制在|不超过|以内|上限|目标|应该花|花多少钱)|(?:预算|控制在|限制在|不超过|上限|目标|应该花|花多少钱).{0,16}(?:${mealSource})`).test(value);
+    if (isMealBudgetOrGoal && !hasPastEatingAction) return false;
     const negatedEating = /(?:没|没有|还没|未|并未)\s*(?:有)?\s*(?:吃|喝)(?!完)|(?:不|别)\s*(?:吃|喝)|(?:早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|零食|食物).{0,8}(?:没吃|没有吃|未吃|不吃)|(?:买了?|拿了?).{0,18}(?:还没吃|没有吃|未吃)/.test(value);
     const plannedEating = /(?:明天|后天|以后|下次|打算|计划|准备|预计|想要|想).{0,18}(?:吃|喝|早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵)/.test(value);
     const hypotheticalEating = /^(?:如果|假如|要是)|(?:会不会|要不要|该不该).{0,12}(?:吃|喝)|(?:吃|喝).{0,12}(?:会不会|要不要|该不该)/.test(value);

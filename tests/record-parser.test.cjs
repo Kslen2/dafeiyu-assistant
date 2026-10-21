@@ -69,6 +69,8 @@ const routeCases = [
   ["食材做饭建议", "冰箱里只有鸡蛋和面包，能做什么午饭", { food: false, structured: false }],
   ["假设餐食评价", "中午吃全麦面包怎么样", { food: false, structured: false }],
   ["已吃事实附带评价", "午饭吃了牛肉面，味道怎么样", { food: true, structured: false }],
+  ["餐饮预算不是饮食", "午饭预算30元", { food: false, structured: false }],
+  ["餐饮目标不是饮食", "午饭控制在30元以内", { food: false, structured: false }],
   ["明确记录午饭", "我午饭吃了牛肉面", { food: true, structured: false }],
   ["无单位消费加饮食", "今天中午消费23吃了一碗锅烧广西米粉", { food: true, structured: true }],
   ["花费小数无单位加饮食", "午饭吃肯德基，花费24.9", { food: true, structured: true }],
