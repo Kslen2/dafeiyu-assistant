@@ -440,6 +440,7 @@
       || new RegExp(`(?:推荐|建议).{0,14}(?:${mealSource}|吃|喝|搭配)`).test(value)
       || /(?:吃|喝|搭配).{0,14}(?:怎么样|合适吗|好吗|行吗|可以吗)|(?:怎么|如何).{0,14}(?:吃|喝|搭配|做)|(?:能|可以).{0,8}(?:做|吃).{0,8}(?:什么|啥|哪种|哪个)/.test(value);
     if (isFoodAdviceQuestion && !hasPastEatingAction) return false;
+    if ((isQuestionLike(value) || /(?:为什么|什么|哪些|哪种|有没有|有没|正常来说|一般来说)/.test(value)) && !hasPastEatingAction) return false;
     const isMealBudgetOrGoal = new RegExp(`(?:${mealSource}).{0,16}(?:预算|控制在|限制在|不超过|以内|上限|目标|应该花|花多少钱)|(?:预算|控制在|限制在|不超过|上限|目标|应该花|花多少钱).{0,16}(?:${mealSource})`).test(value);
     if (isMealBudgetOrGoal && !hasPastEatingAction) return false;
     const negatedEating = /(?:没|没有|还没|未|并未)\s*(?:有)?\s*(?:吃|喝)(?!完)|(?:不|别)\s*(?:吃|喝)|(?:早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|零食|食物).{0,8}(?:没吃|没有吃|未吃|不吃)|(?:买了?|拿了?).{0,18}(?:还没吃|没有吃|未吃)/.test(value);
@@ -596,7 +597,9 @@
   }
 
   function expectsConversation(text) {
-    return /[?？]|^(?:你好|嗨|哈喽|hello|hi|在吗|早上好|下午好|晚上好)|(?:怎么样|怎么办|你觉得|建议|可以吗|能不能|为什么|如何|聊聊|分析一下|帮我看看)/i.test(String(text || "").trim());
+    const value = String(text || "").trim();
+    return isQuestionLike(value)
+      || /^(?:你好|嗨|哈喽|hello|hi|在吗|早上好|下午好|晚上好)|(?:怎么样|怎么办|你觉得|建议|能不能|为什么|聊聊|分析一下|帮我看看)/i.test(value);
   }
 
   function isSimpleGreeting(text) {
@@ -607,7 +610,7 @@
     const value = String(text || "").trim();
     if (!value) return false;
     const directQuestion = isQuestionLike(value)
-      || /(?:多久|多长时间|几(?:次|个|笔|条|顿|小时|分钟|毫升|升|元|块)|平均(?:是多少|多少|多久|多长|几))/.test(value)
+      || /(?:什么|哪些|哪几|多久|多长时间|几(?:次|个|笔|条|顿|小时|分钟|毫升|升|元|块)|平均(?:是多少|多少|多久|多长|几))/.test(value)
       || /^(?:请问|想问|告诉我|帮我(?:看看|分析|算|查)|查一下|看一下|分析一下|算一下|计算一下|统计一下|总结一下)/.test(value);
     const historyQuery = /(?:今天|今日|昨天|昨日|前天|最近|这周|本周|上周|本月|这个月|过去).{0,20}(?:记录|总计|合计|汇总|统计|总结|摄入|消耗|缺口|花了|消费|饮水|睡眠|运动|做了什么|发生了什么)/.test(value);
     const adviceQuery = /(?:建议|推荐|怎么|如何|为什么|是否|要不要|该不该|应不应该|正常来说|一般来说|通常).{0,28}(?:吃|喝|睡|运动|消费|安排|摄入|热量|蛋白质|碳水|脂肪|健康|合适|合理)?/.test(value);
@@ -620,10 +623,12 @@
     if (parseDeleteRequest(value) || isMealConfirmationRequest(value) || isMealCorrectionRequest(value)) return "mutation";
     const hasRecord = isStructuredRecordRequest(value) || isFoodRecordRequest(value) || isExplicitNoteRequest(value);
     const hasQuery = isInformationQuery(value) || isMealEstimateRequest(value);
+    const requiresStructuredAI = isProfileChangeRequest(value) || needsAIEventInterpretation(value);
+    if (hasQuery && !hasRecord) return "query";
+    if (requiresStructuredAI) return "ambiguous_record";
     if (hasRecord && hasQuery) return "record_and_query";
-    if (hasQuery) return "query";
     if (hasRecord) return "record";
-    if (isProfileChangeRequest(value) || needsAIEventInterpretation(value)) return "ambiguous_record";
+    if (hasQuery) return "query";
     return "conversation";
   }
 

@@ -1,4 +1,4 @@
-const APP_VERSION = "0.9.0";
+const APP_VERSION = "0.10.0";
 const SCHEMA_VERSION = 5;
 const DB_NAME = "dafeiyu-assistant-preview-v2";
 const STORE_NAME = "app-state";
@@ -788,12 +788,22 @@ async function handleSend() {
   const text = input.value.trim();
   if (!text && !pendingPhoto) return;
   const photo = pendingPhoto;
+  const priorPendingProfile = latestPendingProfileMessage();
+  const priorPendingMeal = latestPendingMealMessage();
+  const priorMealClarification = pendingMealClarificationContext();
   pendingPhoto = null;
   leaveDemoMode();
   const userText = photo ? `${text ? `${text}\n` : ""}📷 ${photo.name}` : text;
   const userMessage = addMessage({ role: "user", type: "text", text: userText });
-  const requestIntent = photo ? "record" : window.FeiyuRecords.classifyUserIntent(text);
-  const standaloneQuery = requestIntent === "query";
+  const routing = window.FeiyuConversationRouter.assertRouteSafety(window.FeiyuConversationRouter.routeMessage({
+    text,
+    hasPhoto: Boolean(photo),
+    hasPendingProfile: Boolean(priorPendingProfile),
+    hasPendingMeal: Boolean(priorPendingMeal),
+    hasPendingMealClarification: Boolean(priorMealClarification)
+  }));
+  const requestIntent = routing.intent;
+  document.documentElement.dataset.lastConversationRoute = routing.route;
   input.value = "";
   input.style.height = "auto";
   await saveState();
@@ -801,8 +811,8 @@ async function handleSend() {
 
   let mutationApplied = false;
   try {
-    const deleteRequest = !photo ? parseDeleteRequest(text) : null;
-    if (deleteRequest) {
+    const deleteRequest = routing.deleteRequest || null;
+    if (routing.route === "delete") {
       const deletion = deleteRecords(deleteRequest);
       if (deletion.ambiguous) {
         addMessage({ role: "assistant", type: "text", text: "请说清要删除哪条，例如“删除刚才那条饮食记录”“删除今天那笔 23 元消费”，或者“删除今天所有记录”。" });
@@ -824,37 +834,39 @@ async function handleSend() {
         });
         mutationApplied = true;
       }
-    } else if (photo) {
+    } else if (routing.route === "photo") {
       setRequestState(true, "正在识别这顿饭…");
       const imageDataUrl = await compressImage(photo);
       const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text, imageDataUrl, profile: currentProfile() });
       addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, recordedText: text, mealRecordedAt: userMessage.createdAt });
-    } else if (/总结(?:一下)?今天|今日总结/.test(text)) {
+    } else if (routing.route === "day_summary") {
       setRequestState(true, "正在整理今天的记录…");
       const base = todaySummary();
       const todaysEntries = state.entries.filter((entry) => entry.date === dateKey(0));
       const todaysTasks = state.tasks.filter((task) => (task.dueDate || localDateFromIso(task.createdAt)) === dateKey(0));
       const aiSummary = await window.FeiyuAI.summarizeDay({ apiKey: state.settings.apiKey, entries: todaysEntries, tasks: todaysTasks, profile: currentProfile() });
       addMessage({ role: "assistant", type: "summary", summary: { ...base, ...aiSummary } });
-    } else if (isBareRecordPrompt(text)) {
+    } else if (routing.route === "bare_record") {
       addMessage({ role: "assistant", type: "text", text: "好，你想记录什么？可以直接说完整内容，比如“坐公交花了 1 元，喝水 250 毫升”。" });
-    } else if (latestPendingProfileMessage() && isMealConfirmationRequest(text)) {
-      const pendingProfile = latestPendingProfileMessage();
+    } else if (routing.route === "pending_action_conflict") {
+      addMessage({ role: "assistant", type: "text", text: "现在同时有个性化设置和餐食内容等待处理。请明确说“确认个性化设置”“确认餐食”“取消个性化设置”或“取消餐食”。" });
+    } else if (routing.route === "profile_confirm") {
+      const pendingProfile = priorPendingProfile;
       await confirmProfileChange(pendingProfile.id);
       mutationApplied = true;
       addMessage({ role: "assistant", type: "ack", text: "个性化设置已确认并生效。" });
-    } else if (latestPendingProfileMessage() && isMealClarificationCancellation(text)) {
-      const pendingProfile = latestPendingProfileMessage();
+    } else if (routing.route === "profile_cancel") {
+      const pendingProfile = priorPendingProfile;
       await cancelProfileChange(pendingProfile.id);
       mutationApplied = true;
       addMessage({ role: "assistant", type: "ack", text: "已取消这次个性化设置修改。" });
-    } else if (latestPendingMealMessage() && isMealConfirmationRequest(text)) {
-      const pendingMessage = latestPendingMealMessage();
+    } else if (routing.route === "meal_confirm") {
+      const pendingMessage = priorPendingMeal;
       await confirmMeal(pendingMessage.id);
       mutationApplied = true;
-    } else if (!standaloneQuery && pendingMealClarificationContext() && (isMealClarificationCancellation(text) || isMealClarificationResponse(text))) {
-      const context = pendingMealClarificationContext();
-      if (isMealClarificationCancellation(text)) {
+    } else if (["meal_clarification_cancel", "meal_clarification_response"].includes(routing.route)) {
+      const context = priorMealClarification;
+      if (routing.route === "meal_clarification_cancel") {
         state.entries = state.entries.filter((entry) => entry.id !== context.entry.id);
         mutationApplied = true;
         addMessage({ role: "assistant", type: "ack", text: "已取消这条待补充的饮食记录。" });
@@ -881,8 +893,8 @@ async function handleSend() {
           });
         }
       }
-    } else if (isMealConfirmationRequest(text)) {
-      const clarification = pendingMealClarificationContext();
+    } else if (routing.route === "meal_confirmation_missing") {
+      const clarification = priorMealClarification;
       addMessage({
         role: "assistant",
         type: "text",
@@ -890,8 +902,8 @@ async function handleSend() {
           ? "这条饮食还缺少食物明细，暂时不能确认。补充主要吃了什么后，我会生成可确认的营养卡片。"
           : "当前没有等待确认的餐食卡；已经确认过的记录不会重复写入。"
       });
-    } else if (!standaloneQuery && latestPendingMealMessage() && isMealCorrectionRequest(text)) {
-      const previous = latestPendingMealMessage();
+    } else if (routing.route === "meal_correction") {
+      const previous = priorPendingMeal;
       const sourceEntry = previous.sourceEntryId ? state.entries.find((entry) => entry.id === previous.sourceEntryId) : null;
       const originalText = previous.recordedText || sourceEntry?.data?.description || sourceEntry?.sourceText || "";
       setRequestState(true, "正在按补充信息修正…");
@@ -916,11 +928,11 @@ async function handleSend() {
           mealRecordedAt: previous.mealRecordedAt || previous.createdAt
         });
       }
-    } else if (isProfileQuery(text)) {
+    } else if (routing.route === "profile_query") {
       setRequestState(true, "正在查看你的个性化设置…");
       const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: [], entries: [], tasks: [], profile: currentProfile(), requestMode: "query" });
       addMessage({ role: "assistant", type: "text", text: sanitizeUnverifiedChatReply(reply) });
-    } else if (requestIntent === "ambiguous_record" && needsAIEventInterpretation(text)) {
+    } else if (routing.route === "ai_event") {
       setRequestState(true, "正在理解这条生活记录…");
       const plan = await window.FeiyuAI.interpretLifeEvent({
         apiKey: state.settings.apiKey,
@@ -956,7 +968,7 @@ async function handleSend() {
       } else if (!recorded.labels.length && !plan.mealText && !profilePatch) {
         addMessage({ role: "assistant", type: "text", text: "我没有找到可以安全执行的修改。请说清要改哪条记录以及正确结果，例如“刚才那笔消费改成 19.9 元”。" });
       }
-    } else if (isMealEstimateRequest(text)) {
+    } else if (routing.route === "meal_estimate") {
       setRequestState(true, "正在估算饮食摄入…");
       const currentHasFood = isFoodRecordRequest(text) && !/^(?:帮我)?算(?:一下)?(?:这(?:个|顿|次))?(?:的)?(?:摄入|热量)[吧。！!？?]*$/.test(text.trim());
       const context = currentHasFood ? null : recentMealContext();
@@ -966,7 +978,7 @@ async function handleSend() {
         ? window.FeiyuRecords.resolveEventTime(window.FeiyuRecords.foodTimeContext(text), userMessage.createdAt).occurredAt
         : undefined;
       addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, sourceEntryId: context?.sourceEntryId || null, recordedText: currentHasFood ? text : context?.description || text, mealRecordedAt });
-    } else if (isFoodRecordRequest(text)) {
+    } else if (routing.route === "food_record") {
       const otherRecords = isStructuredRecordRequest(text) ? parseAndRecord(text) : { labels: [], entryIds: [], taskIds: [], date: "" };
       const pendingMeal = addEntry("meal_note", { description: text, analyzed: false }, text, new Date(), window.FeiyuRecords.foodTimeContext(text));
       mutationApplied = true;
@@ -986,8 +998,7 @@ async function handleSend() {
         addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, sourceEntryId: pendingMeal.id, recordedText: text });
       }
     } else {
-      const shouldRecord = isStructuredRecordRequest(text) || isExplicitNoteRequest(text);
-      if (shouldRecord) {
+      if (routing.route === "structured_record") {
         const records = parseAndRecord(text);
         mutationApplied = true;
         addOperationReceipt("记录已保存", records.labels, {
@@ -995,7 +1006,7 @@ async function handleSend() {
           createdTaskIds: records.taskIds,
           date: records.date
         });
-        if (expectsConversation(text)) {
+        if (routing.replyAfterMutation) {
           setRequestState(true, "大肥鱼正在想…");
           const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: isPeriodSummaryRequest(text) ? [] : recentConversationHistory(), entries: needsLifeContext(text) ? recentLifeEntries(lifeContextDays(text)) : [], tasks: needsTaskContext(text) || isPeriodSummaryRequest(text) ? recentTasksForAI(lifeContextDays(text)) : [], profile: currentProfile(), requestMode: requestIntent });
           addMessage({ role: "assistant", type: "text", text: reply });

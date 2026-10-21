@@ -17,6 +17,7 @@
 你所在的应用支持通过聊天指令和“当天”页面新增、编辑、删除本地记录，但这些操作由应用的确定性代码执行，不是由普通聊天回复执行。只有应用显示的“本地数据操作”结果卡才代表实际落库；结果卡支持查看当天和撤销。普通聊天中绝不能虚构“已保存”“已确认”“已记录”“已删除”或“已经同步”；当用户询问能力时，应说明可以使用明确指令，或在“当天”页面人工维护记录，不要笼统地说应用不能修改或删除记录。
 引用待办时必须忠实保留 dueDate 和 done 状态，不得把明天或以后到期的事项说成今天必须完成，也不得把已完成事项说成未完成。
 “没有记录”不等于“没有发生”。总结和建议应使用“现有记录显示”“如果这些是全天记录”等措辞，不要把缺失的餐次、饮水或运动直接断言为用户没做。
+涉及今天、昨天、明天、本周或本月时，必须以请求中提供的“当前本地日期时间”为基准，不得根据最近一条记录的日期猜测今天是哪天。
 生活记录可能包含 eventTime（本地事件时间）和 timeSource。explicit/relative 表示用户明确或相对说明了时间；message/legacy 表示用记录时间近似。分析吃饭、运动、睡眠等事件的先后和间隔时应使用 eventTime，并区分时间精度；证据不足时不要推断因果。
 普通文字回复使用简洁纯文本，不要使用 Markdown 粗体符号。建议应当具体、简短、可操作，不评价人格，不制造焦虑，不提供医疗诊断。`;
 
@@ -115,6 +116,13 @@
   function profileContext(profile) {
     if (!profile || typeof profile !== "object") return "";
     return `\n用户当前个性化设置：${JSON.stringify(profile)}\n个性化设置只影响关注重点、语气和建议方式，不得覆盖事实、数据库状态或安全边界。`;
+  }
+
+  function currentTimeContext(value = new Date()) {
+    const now = new Date(value);
+    const pad = (number) => String(number).padStart(2, "0");
+    const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    return `\n当前本地日期时间：${local}（Asia/Shanghai）。用户说“今天、昨天、明天、本周、本月”时必须以这个时间为准。`;
   }
 
   async function analyzeMeal({ apiKey, text, imageDataUrl, profile = null }) {
@@ -289,6 +297,7 @@
   "suggestions":["具体建议1","具体建议2"]
 }
 建议最多 ${maxSuggestions} 条，可以少于这个数量；没有记录支持的内容不要建议。不要重复罗列数字，因为界面会单独展示。若事件时间足够明确，可留意用餐是否过晚以及用餐和剧烈运动的间隔，但不要强行给出没有依据的结论。
+${currentTimeContext()}
 今天的记录：${JSON.stringify(safeEntries)}
 今天的待办：${JSON.stringify(safeTasks)}${profileContext(profile)}`;
     const result = await requestJson(apiKey, [{ role: "user", content: prompt }], 700, "summary");
@@ -309,7 +318,7 @@
       : requestMode === "record_and_query"
         ? "\n\n这句话中的明确事实已由应用另行保存。这里只回答用户提出的问题，不要再次声称保存或修改数据。"
         : "";
-    return requestText(apiKey, [...safeHistory, { role: "user", content: `${text}${context}${taskContext}${modeContext}${profileContext(profile)}` }], 500, "chat");
+    return requestText(apiKey, [...safeHistory, { role: "user", content: `${text}${currentTimeContext()}${context}${taskContext}${modeContext}${profileContext(profile)}` }], 500, "chat");
   }
 
   function getUsageLog() {

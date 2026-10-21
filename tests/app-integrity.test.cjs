@@ -7,6 +7,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const app = read("dist/app.js");
 const html = read("dist/index.html");
 const core = read("dist/assistant-core.js");
+const router = read("dist/conversation-router.js");
 const manifest = JSON.parse(read("dist/manifest.json"));
 
 const appVersion = app.match(/^const APP_VERSION = "([^"]+)";/m)?.[1];
@@ -14,7 +15,7 @@ const htmlVersion = html.match(/class="version-tag">v([^<]+)</)?.[1];
 assert.ok(appVersion, "app version must exist");
 assert.equal(htmlVersion, appVersion, "visible version must match packaged version");
 
-const requiredScripts = ["record-parser.js", "record-operations.js", "profile-core.js", "assistant-core.js", "app.js"];
+const requiredScripts = ["record-parser.js", "conversation-router.js", "record-operations.js", "profile-core.js", "assistant-core.js", "app.js"];
 let previousIndex = -1;
 for (const script of requiredScripts) {
   const index = html.indexOf(`./${script}`);
@@ -55,8 +56,10 @@ assert.match(app, /undoOperation/, "structured result cards must support one-tap
 assert.match(app, /data-view-operation-day/, "operation results must link to the affected day");
 assert.match(app, /sanitizeUnverifiedChatReply/, "unverified AI chat replies must not claim database mutations");
 assert.match(app, /FeiyuRecords\.sanitizeUnverifiedChatReply/, "chat mutation guard must use the tested shared implementation");
-assert.match(app, /FeiyuRecords\.classifyUserIntent/, "chat must use one unified record-query-conversation router");
-assert.match(app, /standaloneQuery/, "independent queries must bypass stale pending meal context");
+assert.match(router, /classifyUserIntent/, "the unified router must classify every message before selecting a handler");
+assert.match(app, /FeiyuConversationRouter\.routeMessage/, "the send pipeline must use the tested stateful conversation router");
+assert.match(app, /FeiyuConversationRouter\.assertRouteSafety/, "query routes must pass the no-mutation invariant");
+assert.match(app, /lastConversationRoute/, "the effective route must be observable for end-to-end diagnostics");
 assert.match(html, /id="entryEditor"/, "manual editor dialog must exist");
 assert.match(html, /id="openEntryCreator"/, "day screen must expose manual record creation");
 assert.match(html, /id="entryEditType"/, "manual creation must allow choosing a record type");

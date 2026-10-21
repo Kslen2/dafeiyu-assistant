@@ -51,6 +51,8 @@ vm.runInNewContext(source, sandbox, { filename: "assistant-core.js" });
   assert.match(chatPrompt, /待办事项/);
   assert.match(chatPrompt, /买牛奶/);
   assert.match(chatPrompt, /用眼情况/);
+  assert.match(chatPrompt, /当前本地日期时间：\d{4}-\d{2}-\d{2}/);
+  assert.match(requests[0].messages[0].content, /不得根据最近一条记录的日期猜测今天是哪天/);
   assert.doesNotMatch(chatPrompt, /test-key/);
 
   const deficitEntries = [

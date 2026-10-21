@@ -367,6 +367,8 @@ const conversationCases = [
   ["我跑了30分钟", false, false],
   ["我跑了30分钟，感觉怎么样？", true, false],
   ["我今天睡了7小时，你觉得够吗", true, false],
+  ["刚喝了500ml水，这样够吗", true, false],
+  ["午饭吃了牛肉面，这样合适吗", true, false],
   ["建议我晚上吃什么", true, false],
   ["帮我看看最近的消费", true, false],
   ["你好", true, true],
