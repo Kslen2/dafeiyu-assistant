@@ -1,4 +1,4 @@
-const APP_VERSION = "0.8.4";
+const APP_VERSION = "0.9.0";
 const SCHEMA_VERSION = 5;
 const DB_NAME = "dafeiyu-assistant-preview-v2";
 const STORE_NAME = "app-state";
@@ -38,10 +38,7 @@ const formatMessageText = (value = "", allowMarkdown = false) => {
 };
 
 function sanitizeUnverifiedChatReply(reply) {
-  const value = String(reply || "").trim();
-  const mutationClaim = /(?:^|[，。；！!\n])\s*(?:我|这边|系统|应用)?\s*(?:已|已经)(?:为你)?(?:记录|保存|写入|同步|确认|更新|删除|执行)|记录指令已发|指令已发给应用|实际写入由应用执行|请到[“\"']?当天[”\"']?页面查看是否/;
-  if (!mutationClaim.test(value)) return value;
-  return "这句话没有被应用识别为可写入记录，因此目前没有保存。请换一种包含记录类型和时间或数值的明确说法；只有应用显示“已记录……”确认条时，才表示已经写入“当天”。";
+  return window.FeiyuRecords.sanitizeUnverifiedChatReply(reply);
 }
 
 let db;
@@ -795,6 +792,8 @@ async function handleSend() {
   leaveDemoMode();
   const userText = photo ? `${text ? `${text}\n` : ""}📷 ${photo.name}` : text;
   const userMessage = addMessage({ role: "user", type: "text", text: userText });
+  const requestIntent = photo ? "record" : window.FeiyuRecords.classifyUserIntent(text);
+  const standaloneQuery = requestIntent === "query";
   input.value = "";
   input.style.height = "auto";
   await saveState();
@@ -853,7 +852,7 @@ async function handleSend() {
       const pendingMessage = latestPendingMealMessage();
       await confirmMeal(pendingMessage.id);
       mutationApplied = true;
-    } else if (pendingMealClarificationContext() && (isMealClarificationCancellation(text) || isMealClarificationResponse(text))) {
+    } else if (!standaloneQuery && pendingMealClarificationContext() && (isMealClarificationCancellation(text) || isMealClarificationResponse(text))) {
       const context = pendingMealClarificationContext();
       if (isMealClarificationCancellation(text)) {
         state.entries = state.entries.filter((entry) => entry.id !== context.entry.id);
@@ -891,7 +890,7 @@ async function handleSend() {
           ? "这条饮食还缺少食物明细，暂时不能确认。补充主要吃了什么后，我会生成可确认的营养卡片。"
           : "当前没有等待确认的餐食卡；已经确认过的记录不会重复写入。"
       });
-    } else if (latestPendingMealMessage() && isMealCorrectionRequest(text)) {
+    } else if (!standaloneQuery && latestPendingMealMessage() && isMealCorrectionRequest(text)) {
       const previous = latestPendingMealMessage();
       const sourceEntry = previous.sourceEntryId ? state.entries.find((entry) => entry.id === previous.sourceEntryId) : null;
       const originalText = previous.recordedText || sourceEntry?.data?.description || sourceEntry?.sourceText || "";
@@ -919,9 +918,9 @@ async function handleSend() {
       }
     } else if (isProfileQuery(text)) {
       setRequestState(true, "正在查看你的个性化设置…");
-      const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: [], entries: [], tasks: [], profile: currentProfile() });
+      const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: [], entries: [], tasks: [], profile: currentProfile(), requestMode: "query" });
       addMessage({ role: "assistant", type: "text", text: sanitizeUnverifiedChatReply(reply) });
-    } else if (needsAIEventInterpretation(text)) {
+    } else if (requestIntent === "ambiguous_record" && needsAIEventInterpretation(text)) {
       setRequestState(true, "正在理解这条生活记录…");
       const plan = await window.FeiyuAI.interpretLifeEvent({
         apiKey: state.settings.apiKey,
@@ -998,7 +997,7 @@ async function handleSend() {
         });
         if (expectsConversation(text)) {
           setRequestState(true, "大肥鱼正在想…");
-          const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: isPeriodSummaryRequest(text) ? [] : recentConversationHistory(), entries: needsLifeContext(text) ? recentLifeEntries(lifeContextDays(text)) : [], tasks: needsTaskContext(text) || isPeriodSummaryRequest(text) ? recentTasksForAI(lifeContextDays(text)) : [], profile: currentProfile() });
+          const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: isPeriodSummaryRequest(text) ? [] : recentConversationHistory(), entries: needsLifeContext(text) ? recentLifeEntries(lifeContextDays(text)) : [], tasks: needsTaskContext(text) || isPeriodSummaryRequest(text) ? recentTasksForAI(lifeContextDays(text)) : [], profile: currentProfile(), requestMode: requestIntent });
           addMessage({ role: "assistant", type: "text", text: reply });
         }
       } else {
@@ -1009,7 +1008,8 @@ async function handleSend() {
           history: isSimpleGreeting(text) || isPeriodSummaryRequest(text) ? [] : recentConversationHistory(),
           entries: needsLifeContext(text) ? recentLifeEntries(lifeContextDays(text)) : [],
           tasks: needsTaskContext(text) || isPeriodSummaryRequest(text) ? recentTasksForAI(lifeContextDays(text)) : [],
-          profile: currentProfile()
+          profile: currentProfile(),
+          requestMode: requestIntent
         });
         addMessage({ role: "assistant", type: "text", text: sanitizeUnverifiedChatReply(reply) });
       }

@@ -298,13 +298,18 @@
     };
   }
 
-  async function chat({ apiKey, text, history = [], entries = [], tasks = [], profile = null }) {
+  async function chat({ apiKey, text, history = [], entries = [], tasks = [], profile = null, requestMode = "conversation" }) {
     const safeHistory = history.filter((item) => item && ["user", "assistant"].includes(item.role) && item.content).slice(-6);
     const safeEntries = entries.map((entry) => ({ type: entry.type, date: entry.date, eventTime: eventTimeForAI(entry), timeSource: entry.timeSource || "legacy", data: entry.data })).slice(-60);
     const safeTasks = tasks.filter((task) => task?.text).slice(-40).map((task) => ({ text: task.text, dueDate: task.dueDate || "", done: Boolean(task.done) }));
     const context = safeEntries.length ? `\n\n以下是近期可能相关的生活记录，其中 eventTime 是本地事件时间。只有在确实有助于回答时才引用，不要生硬复述：\n${JSON.stringify(safeEntries)}` : "";
     const taskContext = safeTasks.length ? `\n\n以下是可能相关的待办事项。只能依据这些待办回答，不要虚构提醒能力：\n${JSON.stringify(safeTasks)}` : "";
-    return requestText(apiKey, [...safeHistory, { role: "user", content: `${text}${context}${taskContext}${profileContext(profile)}` }], 500, "chat");
+    const modeContext = requestMode === "query"
+      ? "\n\n应用已将本条识别为信息查询。请直接回答问题；不要讨论这句话能否写入，不要生成餐食卡，也不要声称修改了本地数据。可以用“现有记录显示”或“根据已记录的数据”描述传入的历史记录。"
+      : requestMode === "record_and_query"
+        ? "\n\n这句话中的明确事实已由应用另行保存。这里只回答用户提出的问题，不要再次声称保存或修改数据。"
+        : "";
+    return requestText(apiKey, [...safeHistory, { role: "user", content: `${text}${context}${taskContext}${modeContext}${profileContext(profile)}` }], 500, "chat");
   }
 
   function getUsageLog() {

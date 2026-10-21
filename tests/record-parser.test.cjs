@@ -1,6 +1,35 @@
 const assert = require("node:assert/strict");
 const parser = require("../dist/record-parser.js");
 
+const intentCases = [
+  ["昨日热量缺口查询", "我昨天的热量缺口有多少", "query"],
+  ["历史饮食查询", "昨天一共摄入多少热量", "query"],
+  ["营养建议查询", "正常来说一天应该摄入多少脂肪比较合适", "query"],
+  ["餐食推荐查询", "有没有什么午餐推荐，我还有几片全麦面包", "query"],
+  ["消费查询", "我昨天一共花了多少钱", "query"],
+  ["睡眠查询", "我这周平均睡了多久", "query"],
+  ["普通饮水记录", "刚喝了500ml水", "record"],
+  ["事实加问题", "刚喝了500ml水，这样够吗", "record_and_query"],
+  ["复杂生活记录", "刚收到一笔退款", "ambiguous_record"],
+  ["询问券如何记录", "餐食团购券应该怎么记录", "query"],
+  ["删除操作", "删除刚才的饮水记录", "mutation"],
+  ["普通聊天", "你好呀", "conversation"]
+];
+for (const [name, text, expected] of intentCases) {
+  assert.equal(parser.classifyUserIntent(text), expected, `${name}: unified intent router`);
+}
+
+const replyCases = [
+  ["根据已记录的饮食，昨天摄入约 1200 千卡。", "根据已记录的饮食，昨天摄入约 1200 千卡。"],
+  ["现有记录显示昨天有两顿饭。", "现有记录显示昨天有两顿饭。"],
+  ["昨天已记录摄入 1200 千卡，但缺少全天总消耗。", "昨天已记录摄入 1200 千卡，但缺少全天总消耗。"],
+  ["系统已经记录的数据显示，昨天摄入约 1200 千卡。", "系统已经记录的数据显示，昨天摄入约 1200 千卡。"],
+  ["我已经为你记录了这次饮水。", "我不能在普通回复中确认本地数据已经修改；只有“本地数据操作”结果卡才代表实际写入。"],
+  ["已帮你删除昨天的记录。", "我不能在普通回复中确认本地数据已经修改；只有“本地数据操作”结果卡才代表实际写入。"],
+  ["记录指令已发给应用。", "我不能在普通回复中确认本地数据已经修改；只有“本地数据操作”结果卡才代表实际写入。"]
+];
+for (const [input, expected] of replyCases) assert.equal(parser.sanitizeUnverifiedChatReply(input), expected);
+
 const cases = [
   ["公交和饮水组合", "我坐公交花了一块钱，喝水250毫升", [{ type: "water", data: { ml: 250 } }, { type: "expense", data: { amount: 1, category: "交通" } }]],
   ["中文金额打车", "打车花了十五块", [{ type: "expense", data: { amount: 15, category: "交通" } }]],

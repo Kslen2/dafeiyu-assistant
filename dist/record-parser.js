@@ -603,5 +603,37 @@
     return /^(?:你好|嗨|哈喽|hello|hi|在吗|早上好|下午好|晚上好)[!！。,.，?？~～]*$/i.test(String(text || "").trim());
   }
 
-  return { numberFromText, resolveEventTime, resolveSleepTiming, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealEstimateRequest, isMealCorrectionRequest, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting };
+  function isInformationQuery(text) {
+    const value = String(text || "").trim();
+    if (!value) return false;
+    const directQuestion = isQuestionLike(value)
+      || /(?:多久|多长时间|几(?:次|个|笔|条|顿|小时|分钟|毫升|升|元|块)|平均(?:是多少|多少|多久|多长|几))/.test(value)
+      || /^(?:请问|想问|告诉我|帮我(?:看看|分析|算|查)|查一下|看一下|分析一下|算一下|计算一下|统计一下|总结一下)/.test(value);
+    const historyQuery = /(?:今天|今日|昨天|昨日|前天|最近|这周|本周|上周|本月|这个月|过去).{0,20}(?:记录|总计|合计|汇总|统计|总结|摄入|消耗|缺口|花了|消费|饮水|睡眠|运动|做了什么|发生了什么)/.test(value);
+    const adviceQuery = /(?:建议|推荐|怎么|如何|为什么|是否|要不要|该不该|应不应该|正常来说|一般来说|通常).{0,28}(?:吃|喝|睡|运动|消费|安排|摄入|热量|蛋白质|碳水|脂肪|健康|合适|合理)?/.test(value);
+    return directQuestion || historyQuery || adviceQuery || isProfileQuery(value) || /(?:日|周|月|今日|本周|本月)总结/.test(value);
+  }
+
+  function classifyUserIntent(text) {
+    const value = String(text || "").trim();
+    if (!value) return "conversation";
+    if (parseDeleteRequest(value) || isMealConfirmationRequest(value) || isMealCorrectionRequest(value)) return "mutation";
+    const hasRecord = isStructuredRecordRequest(value) || isFoodRecordRequest(value) || isExplicitNoteRequest(value);
+    const hasQuery = isInformationQuery(value) || isMealEstimateRequest(value);
+    if (hasRecord && hasQuery) return "record_and_query";
+    if (hasQuery) return "query";
+    if (hasRecord) return "record";
+    if (isProfileChangeRequest(value) || needsAIEventInterpretation(value)) return "ambiguous_record";
+    return "conversation";
+  }
+
+  function sanitizeUnverifiedChatReply(reply) {
+    const value = String(reply || "").trim();
+    // 只拦截 AI 明确声称自己完成了本地修改的句子。“根据已记录数据”属于正常分析，不应被误伤。
+    const explicitMutationClaim = /(?:我|这边|系统|应用)\s*(?:已|已经)(?:为你|帮你)?\s*(?:记录|保存|写入|同步|确认|更新|删除|执行)(?!的|中|里|内|显示|数据)|(?:已|已经)(?:为你|帮你)\s*(?:记录|保存|写入|同步|确认|更新|删除|执行)(?!的|中|里|内|显示|数据)|^(?:已|已经)\s*(?:记录|保存|写入|同步|确认|更新|删除|执行)(?:完成|成功|好了|了)[，。；！!\s]|记录指令已发|指令已发给应用|实际写入由应用执行|请到[“"']?当天[”"']?页面查看是否/;
+    if (!explicitMutationClaim.test(value)) return value;
+    return "我不能在普通回复中确认本地数据已经修改；只有“本地数据操作”结果卡才代表实际写入。";
+  }
+
+  return { numberFromText, resolveEventTime, resolveSleepTiming, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealEstimateRequest, isMealCorrectionRequest, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting, isInformationQuery, classifyUserIntent, sanitizeUnverifiedChatReply };
 });

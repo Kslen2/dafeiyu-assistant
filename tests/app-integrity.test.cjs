@@ -54,7 +54,9 @@ assert.match(app, /addOperationReceipt/, "successful mutations must create struc
 assert.match(app, /undoOperation/, "structured result cards must support one-tap undo");
 assert.match(app, /data-view-operation-day/, "operation results must link to the affected day");
 assert.match(app, /sanitizeUnverifiedChatReply/, "unverified AI chat replies must not claim database mutations");
-assert.match(app, /记录指令已发/, "false mutation claims from chat must be rejected deterministically");
+assert.match(app, /FeiyuRecords\.sanitizeUnverifiedChatReply/, "chat mutation guard must use the tested shared implementation");
+assert.match(app, /FeiyuRecords\.classifyUserIntent/, "chat must use one unified record-query-conversation router");
+assert.match(app, /standaloneQuery/, "independent queries must bypass stale pending meal context");
 assert.match(html, /id="entryEditor"/, "manual editor dialog must exist");
 assert.match(html, /id="openEntryCreator"/, "day screen must expose manual record creation");
 assert.match(html, /id="entryEditType"/, "manual creation must allow choosing a record type");
