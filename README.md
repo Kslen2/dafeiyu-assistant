@@ -2,7 +2,7 @@
 
 大肥鱼助手是一款面向个人自用的、本地优先的生活记录与 AI 分析应用。它采用聊天式输入，可记录饮食、饮水、睡眠、运动、消费、普通生活事件和待办，并通过“当天”和“趋势”页面查看积累的数据；需要分析时，再调用 DeepSeek 生成餐食营养估算、日总结、周总结、月总结或生活建议。
 
-当前版本：**v0.11.0**
+当前版本：**v0.11.1**
 
 Android 包名：`com.dafeiyu.assistant`
 
@@ -14,8 +14,8 @@ Android 包名：`com.dafeiyu.assistant`
 
 - 网页 Demo：首次在新的浏览器数据空间打开 `dist` 时，会自动载入一组虚构数据，不需要 API Key。
 - 演示步骤：见 [docs/DEMO.md](./docs/DEMO.md)。
-- Android 安装包：[大肥鱼助手-v0.11.0.apk](./大肥鱼助手-v0.11.0.apk)。
-- APK SHA-256：`C507ACD2651ED5F323526A6F93E1ECEAB2550BD61A9EF5C8B0927917C6E85BC2`
+- Android 安装包：[大肥鱼助手-v0.11.1.apk](./大肥鱼助手-v0.11.1.apk)。
+- APK SHA-256：`3E970FD6B71D7B978077AE6E0834E0D3A65F33621F53E9BE3D60964EED202A00`
 
 仓库和安装包均不包含 API Key、个人记录或签名私钥。安装 APK 后，请在“设置”中仅在自己的设备上填写 Key。
 
@@ -95,7 +95,7 @@ feiyu-assistant/
 ├─ build-apk.ps1              一键测试并构建 release APK
 ├─ APK-BUILD.md               APK 构建与更新说明
 ├─ CHANGELOG.md                版本更新记录
-└─ 大肥鱼助手-v0.11.0.apk      当前签名安装包
+└─ 大肥鱼助手-v0.11.1.apk      当前签名安装包
 ```
 
 ## 在电脑上预览

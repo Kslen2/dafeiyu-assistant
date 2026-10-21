@@ -43,13 +43,16 @@
     base.assistantStyle.maxSuggestions = Math.round(finiteInRange(source.assistantStyle?.maxSuggestions, 1, 5) || base.assistantStyle.maxSuggestions);
     if (["silent", "brief"].includes(source.assistantStyle?.ordinaryRecordReply)) base.assistantStyle.ordinaryRecordReply = source.assistantStyle.ordinaryRecordReply;
     base.customInstructions = cleanText(source.customInstructions, 600);
-    base.customFocuses = (Array.isArray(source.customFocuses) ? source.customFocuses : []).slice(0, 12).map((item, index) => ({
-      id: cleanText(item.id, 40) || `custom-${index + 1}`,
-      name: cleanText(item.name, 30),
-      priority: PRIORITIES.has(item.priority) ? item.priority : "high",
-      signals: (Array.isArray(item.signals) ? item.signals : []).map((signal) => cleanText(signal, 40)).filter(Boolean).slice(0, 10),
-      adviceMode: ["summary_only", "patterns_only", "proactive"].includes(item.adviceMode) ? item.adviceMode : "summary_only"
-    })).filter((item) => item.name);
+    base.customFocuses = (Array.isArray(source.customFocuses) ? source.customFocuses : []).slice(0, 12).map((item, index) => {
+      const safe = item && typeof item === "object" ? item : {};
+      return {
+        id: cleanText(safe.id, 40) || `custom-${index + 1}`,
+        name: cleanText(safe.name, 30),
+        priority: PRIORITIES.has(safe.priority) ? safe.priority : "high",
+        signals: (Array.isArray(safe.signals) ? safe.signals : []).map((signal) => cleanText(signal, 40)).filter(Boolean).slice(0, 10),
+        adviceMode: ["summary_only", "patterns_only", "proactive"].includes(safe.adviceMode) ? safe.adviceMode : "summary_only"
+      };
+    }).filter((item) => item.name);
     if (source.temporaryFocus?.text) base.temporaryFocus = { text: cleanText(source.temporaryFocus.text, 160), expiresAt: cleanText(source.temporaryFocus.expiresAt, 10) };
     return base;
   }

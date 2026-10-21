@@ -82,6 +82,11 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await wait(50);
     if (vm.runInContext("typeof state !== 'undefined' && Array.isArray(state.entries) && state.schemaVersion === 6", sandbox)) break;
   }
+  const startupError = vm.runInContext("window.__startupError || ''", sandbox);
+  const bodyHtml = vm.runInContext("document.body.innerHTML", sandbox);
+  if (startupError || bodyHtml.includes("暂时无法启动")) console.log("STARTUP ERROR:", startupError || bodyHtml.slice(0, 400));
+  assert(!startupError && !bodyHtml.includes("暂时无法启动"), "migration state renders without a startup error");
+
   const result = vm.runInContext(`(() => {
     const byId = (id) => state.entries.find((entry) => entry.id === id);
     const message = (id) => state.messages.find((item) => item.id === id);

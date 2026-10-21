@@ -1,8 +1,9 @@
-const APP_VERSION = "0.11.0";
+const APP_VERSION = "0.11.1";
 const SCHEMA_VERSION = 6;
 const DB_NAME = "dafeiyu-assistant-preview-v2";
 const STORE_NAME = "app-state";
 const STATE_KEY = "primary";
+const SAFE_BOOT_KEY = "dafeiyu-safe-boot-v1";
 const IDLE_COMPOSER_NOTE = "普通记录只保存；饮食会自动估算";
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -39,6 +40,22 @@ const formatMessageText = (value = "", allowMarkdown = false) => {
 
 function sanitizeUnverifiedChatReply(reply) {
   return window.FeiyuRecords.sanitizeUnverifiedChatReply(reply);
+}
+
+function requestSafeBoot() {
+  try { localStorage.setItem(SAFE_BOOT_KEY, "1"); } catch { /* ignore */ }
+  location.reload();
+}
+window.requestSafeBoot = requestSafeBoot;
+
+function consumeSafeBootFlag() {
+  try {
+    const active = localStorage.getItem(SAFE_BOOT_KEY) === "1";
+    if (active) localStorage.removeItem(SAFE_BOOT_KEY);
+    return active;
+  } catch {
+    return false;
+  }
 }
 
 // 聊天回复既不能声称已写入数据库，也不能伪装成应用里的餐食卡。
@@ -246,7 +263,7 @@ function mealCardHtml(message) {
   const kicker = confirmed ? "餐食记录" : view.corrections.length || view.manuallyEdited ? "餐食估算 · 已调整" : view.sourceType === "photo" ? "餐食识别" : "餐食估算";
   const totals = view.totals;
   const itemList = view.items.length
-    ? `<ul class="meal-item-list">${view.items.map((item) => `<li title="蛋白质 ${item.protein}g · 碳水 ${item.carbs}g · 脂肪 ${item.fat}g"><div><strong>${escapeHtml(item.name)}</strong>${item.amount ? `<span>${escapeHtml(item.amount)}</span>` : ""}</div><em>${Math.round(item.calories)} 千卡</em></li>`).join("")}</ul>`
+    ? `<ul class="meal-item-list">${view.items.map((item) => `<li title="蛋白质 ${item?.protein || 0}g · 碳水 ${item?.carbs || 0}g · 脂肪 ${item?.fat || 0}g"><div><strong>${escapeHtml(item?.name || "未命名")}</strong>${item?.amount ? `<span>${escapeHtml(item.amount)}</span>` : ""}</div><em>${Math.round(Number(item?.calories) || 0)} 千卡</em></li>`).join("")}</ul>`
     : view.foods.length
       ? `<ul class="food-list">${view.foods.map((food) => `<li>${escapeHtml(food)}</li>`).join("")}</ul>`
       : "";
@@ -323,7 +340,7 @@ function operationReceiptHtml(message) {
 function renderMessages(scroll = false) {
   const list = $("#messageList");
   list.innerHTML = "";
-  state.messages.slice(-30).forEach((message) => list.appendChild(renderMessage(message)));
+  state.messages.filter(Boolean).slice(-30).forEach((message) => list.appendChild(renderMessage(message)));
   $("#demoBanner").classList.toggle("hidden", !state.demo);
   if (scroll) requestAnimationFrame(() => { $("#chatScroll").scrollTop = $("#chatScroll").scrollHeight; });
 }
@@ -1404,8 +1421,8 @@ function dayEntryPresentation(entry) {
     expense: data.direction === "in" || data.subtype === "refund"
       ? ["↩", `${data.category || "消费"}退款`, `+¥${Math.abs(Number(data.amount || 0)).toFixed(2).replace(/\.00$/, "")}${data.note ? ` · ${data.note}` : ""}`]
       : ["¥", data.subtype === "voucher_purchase" ? `${data.category || "餐饮"}团购券` : data.category || "消费", `¥${Number(data.amount || 0).toFixed(2).replace(/\.00$/, "")}${data.voucherStatus === "unused" ? " · 未使用" : ""}${data.note ? ` · ${data.note}` : ""}`],
-    meal: ["◇", "饮食", `${mealView.name} · ${mealView.totals.calories} 千卡 · ${mealView.items.length} 项 · 蛋白质 ${mealView.totals.protein}g / 碳水 ${mealView.totals.carbs}g / 脂肪 ${mealView.totals.fat}g`],
-    meal_draft: ["◇", mealView.awaitingClarification ? "待补充饮食" : "待确认饮食", `${mealView.name} · ${mealView.totals.calories} 千卡 · ${mealView.items.length} 项，未计入`],
+    meal: ["◇", "饮食", `${mealView?.name || "本次饮食"} · ${mealView?.totals?.calories || 0} 千卡 · ${mealView?.items?.length || 0} 项 · 蛋白质 ${mealView?.totals?.protein || 0}g / 碳水 ${mealView?.totals?.carbs || 0}g / 脂肪 ${mealView?.totals?.fat || 0}g`],
+    meal_draft: ["◇", mealView?.awaitingClarification ? "待补充饮食" : "待确认饮食", `${mealView?.name || "本次饮食"} · ${mealView?.totals?.calories || 0} 千卡 · ${mealView?.items?.length || 0} 项，未计入`],
     meal_note: ["◇", data.analyzed ? "待确认饮食" : "待补充饮食", data.description || entry.sourceText || "已记录饮食"],
     life_event: ["·", data.category || "生活事件", `${data.title || "生活事件"}${data.durationMinutes ? ` · ${data.durationMinutes} 分钟` : ""}${data.details && data.details !== data.title ? ` · ${data.details}` : ""}`],
     note: ["·", "生活记录", data.text || entry.sourceText || "已记录"]
@@ -1814,7 +1831,7 @@ function renderSettings() {
     .filter(([, priority]) => priority === "high")
     .map(([key]) => focusLabels[key])
     .filter(Boolean);
-  highFocuses.push(...profile.customFocuses.filter((item) => item.priority === "high").map((item) => item.name));
+  highFocuses.push(...profile.customFocuses.filter((item) => item && item.priority === "high").map((item) => item?.name || "").filter(Boolean));
   const goals = [
     profile.goals.sleepHours ? `睡眠${profile.goals.sleepHours}h` : "",
     profile.goals.waterMl ? `饮水${profile.goals.waterMl}ml` : "",
@@ -1827,7 +1844,7 @@ function renderSettings() {
     ["重点关注", highFocuses.join("、") || "未特别设置"],
     ["生活目标", goals.join("；") || "未设置"],
     ["回复方式", styleText],
-    ["自定义领域", profile.customFocuses.map((item) => item.name).join("、") || "暂无"],
+    ["自定义领域", profile.customFocuses.map((item) => item?.name || "").filter(Boolean).join("、") || "暂无"],
     ["临时重点", profile.temporaryFocus?.text || "暂无"]
   ];
   if (profile.customInstructions) rows.push(["补充说明", profile.customInstructions]);
@@ -2097,8 +2114,26 @@ async function init() {
   state.entries ||= [];
   state.messages ||= [];
   state.tasks ||= [];
+  // 旧版本或异常中断可能留下 null 项；先剔除，避免启动渲染中断。
+  state.entries = state.entries.filter(Boolean);
+  state.messages = state.messages.filter(Boolean);
+  state.tasks = state.tasks.filter(Boolean);
   const previousSchemaVersion = Number(state.schemaVersion || 0);
   let stateNeedsMigration = previousSchemaVersion !== SCHEMA_VERSION;
+  // 安全启动：只隐藏未确认的餐食草稿，保留已确认记录，避免一张坏草稿卡住整个应用。
+  const safeBoot = consumeSafeBootFlag();
+  if (safeBoot) {
+    const draftIds = new Set(state.entries.filter((entry) => entry.type === "meal_draft").map((entry) => entry.id));
+    state.entries = state.entries.filter((entry) => entry.type !== "meal_draft");
+    state.messages.forEach((message) => {
+      if (message?.type === "meal" && message.draftId && draftIds.has(message.draftId)) {
+        message.deletedRecord = true;
+        message.superseded = true;
+        delete message.draftId;
+      }
+    });
+    stateNeedsMigration = true;
+  }
   if (previousSchemaVersion < 3 && repairEmbeddedMealExpenses()) stateNeedsMigration = true;
   if (previousSchemaVersion < 5 && repairMisclassifiedSleepEntries()) stateNeedsMigration = true;
   state.entries.forEach((entry) => {
@@ -2133,11 +2168,24 @@ async function init() {
     await saveState();
   }
   bindEvents();
-  renderAll();
-  renderMessages(true);
+  if (safeBoot) {
+    addMessage({ role: "assistant", type: "text", text: "已用安全模式启动：本次暂时隐藏了未确认的餐食草稿，已确认记录不受影响。建议先导出完整备份再反馈。" });
+    const sections = [["day", renderDay], ["trends", renderTrends], ["tasks", renderTasks], ["settings", renderSettings]];
+    const failed = [];
+    for (const [name, render] of sections) {
+      try { render(); } catch (error) { failed.push(name); console.error(error); }
+    }
+    try { renderMessages(true); } catch (error) { failed.push("messages"); console.error(error); }
+    window.__safeBootFailedSections = failed;
+    if (failed.length) console.error("安全模式跳过了部分模块：", failed.join("、"));
+  } else {
+    renderAll();
+    renderMessages(true);
+  }
 }
 
 init().catch((error) => {
   console.error(error);
-  document.body.innerHTML = `<main style="padding:32px;font-family:system-ui"><h1>大肥鱼助手暂时无法启动</h1><p>${escapeHtml(error.message)}</p></main>`;
+  window.__startupError = error?.stack || String(error);
+  document.body.innerHTML = `<main style="padding:32px;font-family:system-ui"><h1>大肥鱼助手暂时无法启动</h1><p>${escapeHtml(error?.message || String(error))}</p><button onclick="requestSafeBoot()" style="margin:6px 0 10px;padding:10px 14px;border:0;border-radius:10px;background:#397868;color:#fff;font-size:14px;font-weight:700">尝试安全启动</button><p style="color:#666;font-size:13px;line-height:1.6">安全启动只隐藏未确认的餐食草稿，已确认记录会保留；启动后请先导出完整备份。</p><details><summary>错误详情</summary><pre style="white-space:pre-wrap;font-size:12px">${escapeHtml(error?.stack || "")}</pre></details></main>`;
 });

@@ -85,7 +85,7 @@
     const computed = items.length ? totals(items) : totalsFromData(data);
     return {
       type: entry?.type === "meal" ? "meal" : "draft",
-      name: String(data.name || "").trim() || (items.length === 1 ? items[0].name : "本次饮食"),
+      name: String(data.name || "").trim() || (items.length === 1 ? items[0]?.name || "本次饮食" : "本次饮食"),
       items,
       foods: Array.isArray(data.foods) ? data.foods.filter(Boolean).slice(0, 12) : [],
       totals: computed,
@@ -146,7 +146,7 @@
     entry.data = {
       ...entry.data,
       items: normalized,
-      name: String(meta.name || entry.data?.name || "").trim().slice(0, 80) || (normalized.length === 1 ? normalized[0].name : normalized.slice(0, 2).map((item) => item.name).join("、")),
+      name: String(meta.name || entry.data?.name || "").trim().slice(0, 80) || (normalized.length === 1 ? normalized[0]?.name || "本次饮食" : normalized.slice(0, 2).map((item) => item?.name || "").filter(Boolean).join("、") || "本次饮食"),
       note: meta.note === undefined ? entry.data?.note || "" : String(meta.note).slice(0, 500),
       status: entry.type === "meal" ? "confirmed" : "ready",
       awaitingClarification: false,
