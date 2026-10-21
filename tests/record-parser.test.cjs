@@ -227,6 +227,10 @@ const advancedLifeCases = [
   ["睡眠区间在前", "记今天 1:30 到 9:00 的睡眠", { type: "sleep", data: { hours: 7.5, bedTime: "01:30", wakeTime: "09:00" } }],
   ["补记睡眠区间", "补记今天一点半至九点的睡眠", { type: "sleep", data: { hours: 7.5, bedTime: "01:30", wakeTime: "09:00" } }],
   ["跨夜名词在前", "今天睡眠23:30到7:00", { type: "sleep", data: { hours: 7.5, bedTime: "23:30", wakeTime: "07:00" } }],
+  ["逗号分隔睡眠", "记录昨晚睡眠，零点至今早八点二十", { type: "sleep", data: { hours: 8.3, bedTime: "00:00", wakeTime: "08:20" } }],
+  ["重复晚间上下文", "今日晚上睡眠晚上零点至八点二十", { type: "sleep", data: { hours: 8.3, bedTime: "00:00", wakeTime: "08:20" } }],
+  ["中文分钟睡眠", "昨晚十一点四十睡到今早七点十分", { type: "sleep", data: { hours: 7.5, bedTime: "23:40", wakeTime: "07:10" } }],
+  ["从字睡眠", "记录昨晚睡眠，从零点到今早八点二十", { type: "sleep", data: { hours: 8.3, bedTime: "00:00", wakeTime: "08:20" } }],
   ["半小时睡眠", "昨晚睡了七个半小时", { type: "sleep", data: { hours: 7.5 } }],
   ["小时加分钟睡眠", "睡了6小时30分钟", { type: "sleep", data: { hours: 6.5 } }],
   ["午睡", "午睡半小时", { type: "sleep", data: { hours: 0.5 } }],
@@ -362,6 +366,24 @@ for (const [name, text, expected] of eventTimeCases) {
   assert.equal(occurred.getHours(), expected.hour, `${name}: hour`);
   assert.equal(occurred.getMinutes(), expected.minute, `${name}: minute`);
   assert.equal(actual.timeSource, expected.timeSource, `${name}: source`);
+  passed += 1;
+}
+
+const sleepReference = new Date(2026, 9, 21, 8, 27, 0);
+const sleepTimingCases = [
+  ["凌晨同日起床", "记录昨晚睡眠，零点至今早八点二十", "2026-10-21", 21, 0, 0, 21, 8, 20],
+  ["跨午夜睡眠", "昨晚23:30睡到今早8:20", "2026-10-21", 20, 23, 30, 21, 8, 20],
+  ["回补昨天睡眠", "记录昨天睡眠，23:30到7:00", "2026-10-20", 19, 23, 30, 20, 7, 0]
+];
+for (const [name, text, expectedDate, bedDay, bedHour, bedMinute, wakeDay, wakeHour, wakeMinute] of sleepTimingCases) {
+  const sleepEntry = parser.extract(text).entries[0];
+  assert.ok(sleepEntry, `${name}: parsed sleep`);
+  const timing = parser.resolveSleepTiming(sleepEntry.data, sleepEntry.timeContext || text, sleepReference);
+  const bedAt = new Date(timing.bedAt);
+  const wakeAt = new Date(timing.wakeAt);
+  assert.equal(timing.date, expectedDate, `${name}: attributed date`);
+  assert.deepEqual([bedAt.getDate(), bedAt.getHours(), bedAt.getMinutes()], [bedDay, bedHour, bedMinute], `${name}: bed timestamp`);
+  assert.deepEqual([wakeAt.getDate(), wakeAt.getHours(), wakeAt.getMinutes()], [wakeDay, wakeHour, wakeMinute], `${name}: wake timestamp`);
   passed += 1;
 }
 

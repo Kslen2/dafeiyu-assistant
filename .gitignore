@@ -11,6 +11,7 @@ android/signing/*
 # Keep only the current distributable APK in Git
 *.apk
 !大肥鱼助手-v0.7.0.apk
+!大肥鱼助手-v0.7.1.apk
 
 # Local development files
 .idea/

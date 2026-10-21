@@ -158,10 +158,14 @@
     return { reps: amount, unitText: text };
   }
 
-  function clockParts(hourText, minuteText, halfText, period = "") {
+  function clockParts(hourText, colonMinuteText, pointMinuteText, period = "") {
     let hour = numberFromText(hourText);
-    const minute = halfText === "半" ? 30 : Number(minuteText || 0);
-    if (/昨晚|昨天晚上|晚上|夜里/.test(period) && hour < 12) hour += 12;
+    const minuteText = colonMinuteText || pointMinuteText || "";
+    const minute = minuteText === "半" ? 30 : minuteText ? numberFromText(minuteText) : 0;
+    if (/昨晚|昨天晚上|昨夜|晚上|夜里/.test(period)) {
+      if (hour === 12) hour = 0;
+      else if (hour >= 6 && hour < 12) hour += 12;
+    }
     if (/凌晨/.test(period) && hour === 12) hour = 0;
     return { hour, minute };
   }
@@ -171,24 +175,27 @@
   }
 
   function parseSleep(value) {
-    const startContext = `(昨晚|昨天晚上|晚上|夜里|凌晨|今天|今日)?`;
-    const endContext = `(今早|今天早上|早上|早晨|上午|清晨)?`;
-    const clockToken = `(${NUMBER_SOURCE})(?:\\s*[:：]\\s*(\\d{1,2})|\\s*点\\s*(半)?)`;
+    const startContext = `(?<startContext>昨天晚上|昨晚|昨夜|前天|昨天|昨日|晚上|夜里|凌晨|今天|今日)?`;
+    const endContext = `(?<endContext>前天早上|昨天早上|昨日早上|今天早上|今日早上|今早|早上|早晨|上午|清晨|今天|今日)?`;
+    const clockToken = (prefix) => `(?<${prefix}Hour>${NUMBER_SOURCE})(?:\\s*[:：]\\s*(?<${prefix}ColonMinute>\\d{1,2})|\\s*点\\s*(?<${prefix}PointMinute>半|${NUMBER_SOURCE})?\\s*分?)`;
+    const startClock = clockToken("start");
+    const endClock = clockToken("end");
     const intervalSeparator = `(?:到|至|—|－|-|~|～)`;
     const intervalPatterns = [
       // 昨晚十一点睡到早上七点
-      new RegExp(`${startContext}\\s*${clockToken}\\s*(?:睡(?:觉)?|入睡|上床)(?:\\s*(?:${intervalSeparator}|，|,|。|；|;)\\s*)?${endContext}\\s*${clockToken}(?:\\s*(?:起(?:床)?|醒(?:来|了)?))?`, "i"),
-      // 今日睡眠一点半到九点
-      new RegExp(`${startContext}\\s*(?:睡眠(?:时间)?|睡觉|睡了?)\\s*(?:是|为)?\\s*${clockToken}\\s*${intervalSeparator}\\s*${endContext}\\s*${clockToken}(?:\\s*(?:起(?:床)?|醒(?:来|了)?))?`, "i"),
+      new RegExp(`${startContext}\\s*${startClock}\\s*(?:睡(?:觉)?|入睡|上床)(?:\\s*(?:${intervalSeparator}|，|,|。|；|;)\\s*)?${endContext}\\s*${endClock}(?:\\s*(?:起(?:床)?|醒(?:来|了)?))?`, "i"),
+      // 今日睡眠一点半到九点；记录昨晚睡眠，零点至今早八点二十
+      new RegExp(`${startContext}\\s*(?:睡眠(?:时间|记录)?|睡觉|睡了?)\\s*(?:是|为)?\\s*(?:[，,：:]\\s*)?(?:从\\s*)?(?<clockContext>昨天晚上|昨晚|昨夜|晚上|夜里|凌晨)?\\s*${startClock}\\s*${intervalSeparator}\\s*${endContext}\\s*${endClock}(?:\\s*(?:起(?:床)?|醒(?:来|了)?))?`, "i"),
       // 记今天 1:30 到 9:00 的睡眠
-      new RegExp(`${startContext}\\s*${clockToken}\\s*${intervalSeparator}\\s*${endContext}\\s*${clockToken}\\s*(?:的)?\\s*(?:睡眠(?:时间)?|睡觉)`, "i")
+      new RegExp(`${startContext}\\s*${startClock}\\s*${intervalSeparator}\\s*${endContext}\\s*${endClock}\\s*(?:的)?\\s*(?:睡眠(?:时间|记录)?|睡觉)`, "i")
     ];
     const interval = intervalPatterns.map((pattern) => value.match(pattern)).find(Boolean) || null;
     let data = null;
     let match = interval;
     if (interval && !isHypotheticalAction(clauseAround(value, interval.index, interval.index + interval[0].length))) {
-      const start = clockParts(interval[2], interval[3], interval[4], interval[1] || "");
-      const end = clockParts(interval[6], interval[7], interval[8], interval[5] || "");
+      const groups = interval.groups || {};
+      const start = clockParts(groups.startHour, groups.startColonMinute, groups.startPointMinute, groups.clockContext || groups.startContext || "");
+      const end = clockParts(groups.endHour, groups.endColonMinute, groups.endPointMinute, groups.endContext || "");
       let startMinutes = start.hour * 60 + start.minute;
       const endMinutes = end.hour * 60 + end.minute;
       let duration = endMinutes - startMinutes;
@@ -228,9 +235,46 @@
     if (!data) return null;
     const details = [];
     if (data.hours) details.push(`${data.hours} 小时`);
+    if (data.bedTime && data.wakeTime) details.push(`${data.bedTime}–${data.wakeTime}`);
     if (data.qualityScore) details.push(`质量 ${data.qualityScore} 分`);
     else if (data.quality) details.push(`睡得${data.quality}`);
     return { data, label: `睡眠 ${details.join("，") || "已记录"}`, match };
+  }
+
+  function resolveSleepTiming(data, text, referenceValue = new Date()) {
+    if (!data?.wakeTime || !/^\d{2}:\d{2}$/.test(data.wakeTime)) return resolveEventTime(text, referenceValue);
+    const reference = new Date(referenceValue);
+    const base = Number.isNaN(reference.getTime()) ? new Date() : reference;
+    const value = String(text || "");
+    let wakeDayOffset = 0;
+    if (/前天(?:早上|早晨|上午|清晨)/.test(value)) wakeDayOffset = -2;
+    else if (/(?:昨天|昨日)(?:早上|早晨|上午|清晨)/.test(value)) wakeDayOffset = -1;
+    else if (/(?:今早|今天早上|今日早上|今天|今日)/.test(value)) wakeDayOffset = 0;
+    else if (/(?:昨晚|昨夜|昨天晚上)/.test(value)) wakeDayOffset = 0;
+    else if (/前天/.test(value)) wakeDayOffset = -2;
+    else if (/(?:昨天|昨日)/.test(value)) wakeDayOffset = -1;
+
+    const [wakeHour, wakeMinute] = data.wakeTime.split(":").map(Number);
+    const wakeAt = new Date(base);
+    wakeAt.setDate(wakeAt.getDate() + wakeDayOffset);
+    wakeAt.setHours(wakeHour, wakeMinute, 0, 0);
+
+    let bedAt = null;
+    if (data.bedTime && /^\d{2}:\d{2}$/.test(data.bedTime)) {
+      const [bedHour, bedMinute] = data.bedTime.split(":").map(Number);
+      bedAt = new Date(wakeAt);
+      bedAt.setHours(bedHour, bedMinute, 0, 0);
+      if (bedHour * 60 + bedMinute >= wakeHour * 60 + wakeMinute) bedAt.setDate(bedAt.getDate() - 1);
+    }
+
+    return {
+      occurredAt: wakeAt.toISOString(),
+      date: localDateKey(wakeAt),
+      timeSource: "explicit",
+      timeText: data.bedTime ? `${data.bedTime}–${data.wakeTime}` : data.wakeTime,
+      wakeAt: wakeAt.toISOString(),
+      bedAt: bedAt?.toISOString() || ""
+    };
   }
 
   function extract(text) {
@@ -464,5 +508,5 @@
     return /^(?:你好|嗨|哈喽|hello|hi|在吗|早上好|下午好|晚上好)[!！。,.，?？~～]*$/i.test(String(text || "").trim());
   }
 
-  return { numberFromText, resolveEventTime, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealCorrectionRequest, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting };
+  return { numberFromText, resolveEventTime, resolveSleepTiming, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealCorrectionRequest, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting };
 });

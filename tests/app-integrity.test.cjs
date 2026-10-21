@@ -37,6 +37,8 @@ assert.match(app, /FeiyuRecordOps\.trendMetrics/, "trend screen must use tested 
 assert.match(app, /pendingMealClarificationContext\(\)/, "meal clarification replies must stay in the structured meal flow");
 assert.match(app, /await confirmMeal\(pendingMessage\.id\)/, "typed meal confirmation must perform a real database confirmation");
 assert.match(app, /repairEmbeddedMealExpenses\(\)/, "older meal notes with embedded expenses must be repaired on migration");
+assert.match(app, /repairMisclassifiedSleepEntries\(\)/, "misclassified sleep notes must be repaired on migration");
+assert.match(app, /FeiyuRecords\.resolveSleepTiming/, "sleep records must preserve cross-day bed and wake timestamps");
 assert.match(app, /FeiyuAI\.interpretLifeEvent/, "complex life events must use structured AI interpretation");
 assert.match(app, /applyInterpretedActions/, "AI interpretations must be applied by deterministic app code");
 assert.match(app, /create_life_event/, "universal completed events must have a structured persistence operation");

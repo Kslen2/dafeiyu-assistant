@@ -1,5 +1,5 @@
-const APP_VERSION = "0.7.0";
-const SCHEMA_VERSION = 4;
+const APP_VERSION = "0.7.1";
+const SCHEMA_VERSION = 5;
 const DB_NAME = "dafeiyu-assistant-preview-v2";
 const STORE_NAME = "app-state";
 const STATE_KEY = "primary";
@@ -318,11 +318,10 @@ function addEntry(type, data, sourceText = "", referenceValue = new Date(), time
   const createdAt = new Date(referenceValue);
   const safeCreatedAt = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
   let timing = window.FeiyuRecords.resolveEventTime(timeContext, safeCreatedAt);
+  let entryData = data;
   if (type === "sleep" && data?.wakeTime && /^\d{2}:\d{2}$/.test(data.wakeTime)) {
-    const [hour, minute] = data.wakeTime.split(":").map(Number);
-    const wakeTime = new Date(safeCreatedAt);
-    wakeTime.setHours(hour, minute, 0, 0);
-    timing = { occurredAt: wakeTime.toISOString(), date: localDateFromIso(wakeTime), timeSource: "explicit", timeText: data.wakeTime };
+    timing = window.FeiyuRecords.resolveSleepTiming(data, timeContext, safeCreatedAt);
+    entryData = { ...data, bedAt: timing.bedAt || "", wakeAt: timing.wakeAt || timing.occurredAt };
   }
   const entry = {
     id: uid(),
@@ -332,7 +331,7 @@ function addEntry(type, data, sourceText = "", referenceValue = new Date(), time
     occurredAt: timing.occurredAt,
     timeSource: timing.timeSource,
     timeText: timing.timeText,
-    data,
+    data: entryData,
     sourceText
   };
   state.entries.push(entry);
@@ -381,6 +380,35 @@ function repairEmbeddedMealExpenses() {
       addEntry("expense", parsed.data, mealEntry.sourceText, mealEntry.createdAt, parsed.timeContext || mealEntry.sourceText);
       repaired += 1;
     });
+  });
+  return repaired;
+}
+
+function repairMisclassifiedSleepEntries() {
+  let repaired = 0;
+  state.entries.forEach((entry) => {
+    if (!["note", "life_event"].includes(entry.type)) return;
+    const text = entry.sourceText || entry.data?.text || entry.data?.title || "";
+    if (!/(?:睡眠|睡觉|睡到|入睡)/.test(text)) return;
+    const parsed = window.FeiyuRecords.extract(text);
+    if (parsed.tasks.length || parsed.entries.length !== 1 || parsed.entries[0].type !== "sleep") return;
+    const parsedSleep = parsed.entries[0];
+    const timing = window.FeiyuRecords.resolveSleepTiming(
+      parsedSleep.data,
+      parsedSleep.timeContext || text,
+      entry.createdAt || new Date()
+    );
+    entry.type = "sleep";
+    entry.data = {
+      ...parsedSleep.data,
+      bedAt: timing.bedAt || "",
+      wakeAt: timing.wakeAt || timing.occurredAt
+    };
+    entry.date = timing.date;
+    entry.occurredAt = timing.occurredAt;
+    entry.timeSource = timing.timeSource;
+    entry.timeText = timing.timeText;
+    repaired += 1;
   });
   return repaired;
 }
@@ -1735,6 +1763,7 @@ async function init() {
   const previousSchemaVersion = Number(state.schemaVersion || 0);
   let stateNeedsMigration = previousSchemaVersion !== SCHEMA_VERSION;
   if (previousSchemaVersion < 3 && repairEmbeddedMealExpenses()) stateNeedsMigration = true;
+  if (previousSchemaVersion < 5 && repairMisclassifiedSleepEntries()) stateNeedsMigration = true;
   state.entries.forEach((entry) => {
     if (!entry.occurredAt) {
       entry.occurredAt = entry.createdAt;
