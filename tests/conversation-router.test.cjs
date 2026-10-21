@@ -50,6 +50,16 @@ const routeCases = [
   ["模糊取消冲突", { text: "取消", hasPendingMealClarification: true, hasPendingProfile: true }, "pending_action_conflict", false],
   ["补充餐食", { text: "一个鸡腿堡和小份薯条", hasPendingMealClarification: true }, "meal_clarification_response", true],
   ["修正餐食", { text: "其实只吃了一半", hasPendingMeal: true }, "meal_correction", true],
+  ["口述份量修正餐食", { text: "牛肉150克，海带丝，金针菇，豆干丝加起来100克，大白菜150克，一个煎蛋，一包过了水的油炸泡面", hasPendingMeal: true }, "meal_correction", true],
+  ["单项份量修正餐食", { text: "一包泡面", hasPendingMeal: true }, "meal_correction", true],
+  ["笼统说卡片不准", { text: "卡片不准，需要修改", hasPendingMeal: true }, "meal_correction_prompt", false],
+  ["笼统说算错了", { text: "你算错了", hasPendingMeal: true }, "meal_correction_prompt", false],
+  ["笼统说热量太高", { text: "热量太高了", hasPendingMeal: true }, "meal_correction_prompt", false],
+  ["直接改热量数值", { text: "改成800千卡", hasPendingMeal: true }, "meal_correction", true],
+  ["指认晚饭", { text: "这是我的晚饭" }, "meal_caption", false],
+  ["待确认时指认晚饭", { text: "这是我的晚饭", hasPendingMeal: true }, "meal_caption", false],
+  ["带食物内容的晚饭仍是记录", { text: "晚饭吃了牛肉面" }, "food_record", true],
+  ["消费纠错不被餐食抢走", { text: "刚才那笔消费不对，应该是20元", hasPendingMeal: true }, "ai_event", true],
   ["饮水记录", { text: "刚喝了500ml水" }, "structured_record", true],
   ["饮水混合问句", { text: "刚喝了500ml水，这样够吗" }, "structured_record", true],
   ["运动记录", { text: "下午跑步30分钟" }, "structured_record", true],
@@ -104,5 +114,21 @@ for (const prefix of queryPrefixes) {
     assertions += 1;
   }
 }
+
+// 图片卡之后的真实会话：口述份量应修正原卡，不能掉进普通聊天让 AI 另编一张“卡”。
+decision = router.routeMessage({ text: "这是我的晚饭", hasPhoto: true });
+assert.equal(decision.route, "photo");
+const pendingPhotoState = { hasPendingMeal: true };
+decision = router.routeMessage({ text: "牛肉150克，海带丝，金针菇，豆干丝加起来100克，大白菜150克，一个煎蛋，一包过了水的油炸泡面", ...pendingPhotoState });
+assert.equal(decision.route, "meal_correction");
+assert.equal(decision.allowsMutation, true);
+decision = router.routeMessage({ text: "卡片不准，需要修改", ...pendingPhotoState });
+assert.equal(decision.route, "meal_correction_prompt");
+assert.equal(decision.allowsMutation, false);
+decision = router.routeMessage({ text: "这是我的晚饭", ...pendingPhotoState });
+assert.equal(decision.route, "meal_caption");
+assert.equal(decision.allowsMutation, false);
+assert.equal(router.routeMessage({ text: "正常来说一天应该摄入多少脂肪比较合适", ...pendingPhotoState }).route, "query_chat");
+assertions += 8;
 
 console.log(`PASS ${assertions} stateful conversation-router assertions`);

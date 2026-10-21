@@ -30,6 +30,16 @@ const replyCases = [
 ];
 for (const [input, expected] of replyCases) assert.equal(parser.sanitizeUnverifiedChatReply(input), expected);
 
+const fabricatedCardReplies = [
+  ["仿造餐食卡", "餐食估算卡（待确认）：这份晚餐约 820 千卡，蛋白质约 50 克，碳水约 95 克，脂肪约 38 克。"],
+  ["无标题的卡片式结论", "约 820 千卡，蛋白质约 50 克，碳水约 95 克，脂肪约 38 克，待确认。"]
+];
+for (const [name, reply] of fabricatedCardReplies) {
+  assert.doesNotMatch(parser.sanitizeFabricatedMealCard(reply), /餐食估算卡|千卡/, `${name}: fabricated meal card must not reach the chat bubble`);
+}
+assert.equal(parser.sanitizeFabricatedMealCard("你好，今天想记录什么？"), "你好，今天想记录什么？", "ordinary chat reply is preserved");
+assert.equal(parser.sanitizeFabricatedMealCard("根据记录，你今天摄入约 1500 千卡。"), "根据记录，你今天摄入约 1500 千卡。", "history answer is preserved");
+
 const cases = [
   ["公交和饮水组合", "我坐公交花了一块钱，喝水250毫升", [{ type: "water", data: { ml: 250 } }, { type: "expense", data: { amount: 1, category: "交通" } }]],
   ["中文金额打车", "打车花了十五块", [{ type: "expense", data: { amount: 15, category: "交通" } }]],
@@ -107,6 +117,10 @@ const routeCases = [
   ["裸记一下", "记一下吧", { bare: true, explicit: false }],
   ["显式笔记", "记录：今天换了床单", { bare: false, explicit: true }],
   ["显式随手记", "随手记今天很忙", { bare: false, explicit: true }],
+  ["指认晚饭没有食物", "这是我的晚饭", { food: false, structured: false }],
+  ["评价晚饭没有食物", "晚饭很丰盛", { food: false, structured: false }],
+  ["晚饭吃得晚不是进食", "晚饭吃得很晚", { food: false, structured: false }],
+  ["晚饭带食物明细", "今天的晚饭是牛肉面和煎蛋", { food: true, structured: false }],
 ];
 
 function assertSubset(actual, expected, path) {
@@ -161,6 +175,56 @@ const mealCorrectionCases = [
 ];
 for (const [name, text, expected] of mealCorrectionCases) {
   assert.equal(parser.isMealCorrectionRequest(text), expected, `${name}: meal correction route`);
+  passed += 1;
+}
+
+const mealDetailSupplementCases = [
+  ["口述份量清单", "牛肉150克，海带丝，金针菇，豆干丝加起来100克，大白菜150克，一个煎蛋，一包过了水的油炸泡面", true],
+  ["单项份量", "一包泡面", true],
+  ["单词份量", "牛肉只有100克", true],
+  ["没有份量", "卡片不准，需要修改", false],
+  ["只是指认餐次", "这是我的晚饭", false],
+  ["独立营养咨询", "正常来说一天应该摄入多少脂肪比较合适", false],
+  ["历史热量查询", "我昨天的热量缺口有多少", false],
+  ["饮水记录不抢", "刚喝了500ml水", false],
+  ["消费记录不抢", "公交花了5元", false],
+  ["删除指令不抢", "删除刚才那条饮食记录", false],
+  ["计划饮食不抢", "明天晚饭准备吃牛肉面", false]
+];
+for (const [name, text, expected] of mealDetailSupplementCases) {
+  assert.equal(parser.isMealDetailSupplement(text), expected, `${name}: meal detail supplement`);
+  passed += 1;
+}
+
+const mealCorrectionIntentCases = [
+  ["卡片不准", "卡片不准，需要修改", true],
+  ["估算偏高", "这个热量估算偏高", true],
+  ["热量太高", "热量太高了", true],
+  ["蛋白质算多", "蛋白质算多了", true],
+  ["无主语算错", "你算错了", true],
+  ["无内容改一下", "帮我改一下", true],
+  ["具体份量不是笼统纠错", "牛肉只有100克", false],
+  ["普通问候", "你好", false],
+  ["营养咨询", "正常来说一天应该摄入多少脂肪比较合适", false],
+  ["疑问句", "这张卡不准吗？", false],
+  ["消费纠错不抢", "刚才那笔消费不对，应该是20元", false],
+  ["价格问题不抢", "这个价格不对", false],
+  ["待办修改不抢", "帮我改一下待办", false]
+];
+for (const [name, text, expected] of mealCorrectionIntentCases) {
+  assert.equal(parser.isMealCorrectionIntent(text), expected, `${name}: meal correction intent`);
+  passed += 1;
+}
+
+const bareMealReferenceCases = [
+  ["指认晚饭", "这是我的晚饭", true],
+  ["今天的午饭", "今天的午饭", true],
+  ["带照片说明", "这是今天的晚饭照片", true],
+  ["带食物内容", "晚饭吃了牛肉面", false],
+  ["评价", "晚饭很丰盛", false]
+];
+for (const [name, text, expected] of bareMealReferenceCases) {
+  assert.equal(parser.isBareMealReference(text), expected, `${name}: bare meal reference`);
   passed += 1;
 }
 

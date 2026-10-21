@@ -24,7 +24,7 @@
 
   function typeMatches(entry, type) {
     if (!type) return true;
-    if (type === "meal") return entry.type === "meal" || entry.type === "meal_note";
+    if (type === "meal") return entry.type === "meal" || entry.type === "meal_draft" || entry.type === "meal_note";
     return entry.type === type;
   }
 

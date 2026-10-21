@@ -25,7 +25,9 @@ const mealEstimateRoutingCases = [
   ["算一下刚才午饭的摄入", true],
   ["这杯西瓜汁多少热量", true],
   ["算一下热量", true],
-  ["我刚喝了一杯西瓜汁，算一下摄入", true]
+  ["我刚喝了一杯西瓜汁，算一下摄入", true],
+  ["一天应该摄入多少蛋白质", false],
+  ["每天应该摄入多少蛋白质", false]
 ];
 
 for (const [text, expected] of mealEstimateRoutingCases) {

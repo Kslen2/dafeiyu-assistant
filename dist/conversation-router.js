@@ -68,8 +68,16 @@
       return result("meal_clarification_response", "mutation", "answer_pending_meal_clarification");
     }
     if (genericConfirmation || explicitMealConfirmation || explicitProfileConfirmation) return result("meal_confirmation_missing", "conversation", "no_unambiguous_pending_action");
-    if (!pureQuery && hasPendingMeal && records.isMealCorrectionRequest(value)) {
+
+    // “这是我的晚饭”只是在指认一餐，没有食物内容：只回应，不新建待估算餐食。
+    if (records.isBareMealReference(value)) return result("meal_caption", "conversation", "meal_reference_without_details");
+
+    if (!pureQuery && hasPendingMeal && (records.isMealCorrectionRequest(value) || records.isMealDetailSupplement(value))) {
       return result("meal_correction", "mutation", "correct_pending_meal");
+    }
+    // “卡片不准，需要修改”没有给出具体份量，先由应用问清要改什么，避免 AI 猜错卡片或另编一张。
+    if (!pureQuery && hasPendingMeal && records.isMealCorrectionIntent(value)) {
+      return result("meal_correction_prompt", "conversation", "ask_what_to_correct");
     }
 
     if (records.isProfileQuery(value)) return result("profile_query", "query", "profile_information_query");

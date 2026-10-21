@@ -448,9 +448,11 @@
     const hypotheticalEating = /^(?:如果|假如|要是)|(?:会不会|要不要|该不该).{0,12}(?:吃|喝)|(?:吃|喝).{0,12}(?:会不会|要不要|该不该)/.test(value);
     if (negatedEating || ((!hasPastEatingAction) && (plannedEating || hypotheticalEating))) return false;
     const hasMealWord = /早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|零食|加餐/.test(value);
-    const hasEatingAction = /(?:吃(?:了)?(?!完|饭(?:前|后))|尝了|来了一份|来了一包|来了一碗|来了一盘)/.test(value);
+    const hasEatingAction = /(?:吃(?:了|过)?(?!完|得|的|饭(?:前|后))|尝了|来了一份|来了一包|来了一碗|来了一盘)/.test(value);
     const hasDrinkAction = /(?:喝了?|饮用|来了一杯).{0,12}(?:酸奶|牛奶|咖啡|奶茶|果汁|西瓜汁|饮料|可乐|豆浆)/.test(value);
-    const hasFoodDetails = /米饭|面条|泡面|拉面|米线|粥|馒头|面包|鸡蛋|鸡胸|牛肉|猪肉|鸭肉|鱼肉|虾|蔬菜|水果|苹果|香蕉|薯片|饼干|蛋糕|巧克力|坚果|酸奶|牛奶|豆浆/.test(value);
+    const hasFoodDetails = /米饭|面条|泡面|拉面|米线|米粉|粥|馒头|面包|包子|饺子|馄饨|饼|鸡蛋|煎蛋|蛋|鸡胸|牛肉|猪肉|鸡肉|鸭肉|鱼肉|虾|鱼|排骨|香肠|火腿|蔬菜|青菜|白菜|生菜|菠菜|黄瓜|番茄|西红柿|土豆|红薯|玉米|豆腐|豆干|海带|蘑菇|金针菇|水果|苹果|香蕉|薯片|饼干|蛋糕|巧克力|坚果|酸奶|牛奶|豆浆|汤|沙拉|火锅|烧烤|汉堡|寿司|披萨|三明治|薯条|炸鸡/.test(value);
+    // “这是我的晚饭”“晚饭很丰盛”只说明是哪一餐，没有食物内容，不能据此生成待估算餐食。
+    if (hasMealWord && !hasEatingAction && !hasDrinkAction && !hasFoodDetails) return false;
     const parsed = extract(value);
     const isExpenseOnlyMeal = hasMealWord && parsed.entries.some((entry) => entry.type === "expense") && !hasEatingAction && !hasDrinkAction && !hasFoodDetails;
     const mealUsedOnlyAsTiming = /(?:早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|加餐)(?:前|后)/.test(value)
@@ -472,7 +474,8 @@
     if (!calculateCue) return false;
 
     // 允许“算一下热量”承接最近一顿，也允许在同一句里描述具体食物。
-    const mealCue = /这顿|这餐|这一顿|这一餐|早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|加餐|零食|刚才|刚刚|吃了|喝了|图片|照片|食物|饮料|果汁|西瓜汁|咖啡|奶茶|牛奶|豆浆|米饭|面|粉|粥|肉|鸡|鸭|鱼|虾|蛋|菜|水果/.test(value);
+    // “蛋白质”不是“蛋”：避免“一天应该摄入多少蛋白质”被当成一顿餐食。
+    const mealCue = /这顿|这餐|这一顿|这一餐|早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|加餐|零食|刚才|刚刚|吃了|喝了|图片|照片|食物|饮料|果汁|西瓜汁|咖啡|奶茶|牛奶|豆浆|米饭|面|粉|粥|肉|鸡|鸭|鱼|虾|蛋(?!白)|菜|水果/.test(value);
     const bareFollowUp = /^(?:帮我)?(?:算|计算|估算)(?:一下)?(?:这(?:个|顿|餐|次))?(?:的)?(?:摄入|热量|千卡|大卡|卡路里)[吧。！!？?]*$/.test(value);
     return mealCue || bareFollowUp || isFoodRecordRequest(value);
   }
@@ -483,8 +486,49 @@
     const generalNutritionQuestion = /(?:一天|每天|每日|每餐|正常来说|一般来说|通常|成年人).{0,24}(?:摄入|需要|应该|建议|推荐|合适|标准)|(?:热量|蛋白质|碳水|脂肪|营养).{0,16}(?:推荐量|标准|多少|合适)/.test(value);
     if (isQuestionLike(value) || generalNutritionQuestion) return false;
     const correctionCue = /其实|实际|应该|大概|大约|约莫|不是|改成|算作|只有|只吃|没吃完|剩了|不足|不到|少于|多于|一半|半份|半包|小包装|大包装|净含量|营养成分|没有那么多|没那么多/;
-    const mealCue = /克|千克|公斤|g\b|kg\b|毫升|ml\b|升\b|包|碗|盘|份|杯|口|根|片|个|食物|餐|饭|面|粉|粥|肉|鸡|鸭|鱼|虾|蛋|奶|水果|蔬菜|零食|饮料|油|糖|酱|热量|蛋白质|碳水|脂肪|营养|吃/i;
+    const mealCue = /克|千克|公斤|g\b|kg\b|毫升|ml\b|升\b|包|碗|盘|份|杯|口|根|片|个|食物|餐|饭|面|粉|粥|肉|鸡|鸭|鱼|虾|蛋|奶|水果|蔬菜|零食|饮料|油|糖|酱|热量|蛋白质|碳水|脂肪|营养|千卡|大卡|卡路里|吃/i;
     return correctionCue.test(value) && mealCue.test(value);
+  }
+
+  // 用户常直接用“食材 + 份量”纠正上一张卡，例如“牛肉150克，一个煎蛋，一包泡面”。
+  // 这类补充没有“其实/应该”等纠错词，只靠份量清单表达，需要单独识别，否则会掉进普通聊天。
+  function isMealDetailSupplement(text) {
+    const value = String(text || "").trim();
+    if (!value || value.length > 240) return false;
+    if (/[?？]/.test(value) || isQuestionLike(value)) return false;
+    if (isMealClarificationCancellation(value) || isMealConfirmationRequest(value)) return false;
+    if (isProfileChangeRequest(value) || isProfileQuery(value) || parseDeleteRequest(value)) return false;
+    if (/^(?:明天|后天|下次|以后|打算|计划|准备|预计|如果|假如|要是)/.test(value)) return false;
+    if (/(?:推荐|建议|怎么吃|怎么做|吃什么|吃啥|怎么搭配|如何搭配)/.test(value)) return false;
+    // 已经能被本地确定性解析的饮水、运动、消费、睡眠等记录，不应被餐食修正抢走。
+    if (isStructuredRecordRequest(value)) return false;
+    if (isFoodRecordRequest(value) && /(?:早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|加餐)/.test(value)) return false;
+    const quantity = new RegExp(`(?:\\d+(?:\\.\\d+)?|[零〇一二两三四五六七八九十半]+)\\s*(?:克|千克|公斤|斤|两|毫升|ml|升|包|袋|盒|瓶|罐|碗|盘|份|个|只|片|根|块|勺|杯|条|串|把|颗|枚)`, "gi");
+    const food = /牛肉|猪肉|鸡肉|鸭肉|羊肉|排骨|火腿|香肠|培根|鱼|虾|蟹|蛋|米饭|面|粉|粥|馒头|面包|包子|饺子|馄饨|饼|白菜|青菜|生菜|菠菜|土豆|番茄|西红柿|黄瓜|海带|金针菇|蘑菇|木耳|豆干|豆腐|豆皮|腐竹|蔬菜|水果|苹果|香蕉|橙|奶|酸奶|咖啡|奶茶|豆浆|果汁|可乐|饮料|泡面|方便面|薯片|饼干|蛋糕|巧克力|坚果|芝士|奶酪|糖|酱|沙拉|汤|火锅|烧烤|寿司|汉堡|披萨|三明治|薯条|炸鸡|玉米|红薯|燕麦|油/;
+    const quantities = value.match(quantity) || [];
+    if (!quantities.length || !food.test(value)) return false;
+    if (quantities.length >= 2) return true;
+    const foodMentions = (value.match(new RegExp(food.source, "g")) || []).length;
+    if (foodMentions >= 2 || /[，,、；;]/.test(value)) return true;
+    // “一包泡面”“牛肉150克”这类极短的单项补充，同样是对上一张卡的份量修正。
+    return value.length <= 20 && !/(?:吃|喝|尝)/.test(value);
+  }
+
+  // “卡片不准，需要修改”这类没有具体份量的纠错请求：需要应用先问清改什么，而不是交给 AI 猜。
+  function isMealCorrectionIntent(text) {
+    const value = String(text || "").trim();
+    if (!value || value.length > 60 || /[?？]/.test(value) || isQuestionLike(value)) return false;
+    if (isMealConfirmationRequest(value) || isMealClarificationCancellation(value) || parseDeleteRequest(value)) return false;
+    // 消费、饮水、待办等其他类别的纠错不能被待确认餐食抢走。
+    if (/(?:消费|支出|花了|价格|金额|待办|任务|饮水|喝水|睡眠|运动|跑步|退款|团购券)/.test(value)) return false;
+    const target = /(?:卡片|估算|结果|数字|数据|热量|营养|蛋白质|碳水|脂肪|卡路里|千卡|大卡|这份|这顿|这张|这个|食物|食材|份量|克数)/.test(value);
+    const wrong = /(?:不准|不对|错了|有误|偏高|偏低|太高|太低|太多|太少|算错|算多|算少|估错|估多|估少|高估|低估|改一下|改成|改为|需要修改|调整|不匹配|不准吧|少了|多了)/.test(value);
+    if (target && wrong) return true;
+    // “你算错了”“算多了”没有主语，但在有待确认餐食卡时指向的就是这张卡。
+    const calculationWrong = /(?:算错|估错|高估|低估|算多|算少|估多|估少)/.test(value);
+    if (calculationWrong) return true;
+    // “帮我改一下”这类没有具体内容的修改请求，同样先问清改什么。
+    return /^(?:帮我|请|麻烦)?\s*(?:改|修改|调整|重算|重新估算)(?:一下|下)?(?:吧|它|这张|这个|卡)?[。！!]*$/.test(value);
   }
 
   function isMealConfirmationRequest(text) {
@@ -500,7 +544,7 @@
 
   function isMealClarificationResponse(text) {
     const value = String(text || "").trim();
-    if (!value || value.length > 240 || isMealClarificationCancellation(value)) return false;
+    if (!value || value.length > 240 || isMealClarificationCancellation(value) || isBareMealReference(value)) return false;
     const generalNutritionQuestion = /(?:一天|每天|每日|每餐|正常来说|一般来说|通常|成年人).{0,24}(?:摄入|需要|应该|建议|推荐|合适|标准)|(?:热量|蛋白质|碳水|脂肪|营养).{0,16}(?:推荐量|标准|多少|合适)/.test(value);
     if (isQuestionLike(value) || generalNutritionQuestion || /^(?:你好|嗨|哈喽|总结|删除|清空|待办|提醒我|记录一下)/.test(value)) return false;
     return /(?:个|份|碗|盘|杯|包|克|两|半|大|中|小|套餐|汉堡|鸡|肉|鱼|虾|蛋|饭|面|粉|粥|薯|菜|汤|饮料|可乐|咖啡|奶茶|果汁|没吃完|吃了)/.test(value);
@@ -578,6 +622,15 @@
     return /^(?:记录一下|记录|记下|记一下|帮我记|随手记)[吧。！!？?]*$/.test(String(text || "").trim());
   }
 
+  // “这是我的晚饭”“今天的午饭”只是在指认一餐，没有可以估算的食物内容。
+  function isBareMealReference(text) {
+    const value = String(text || "").trim();
+    if (!value || value.length > 24) return false;
+    const meal = "(?:早餐|早饭|午餐|午饭|晚餐|晚饭|夜宵|加餐)";
+    const reference = new RegExp(`^(?:这|那|这个|那个)?(?:就|都)?(?:是|就是)?(?:我的|我(?:今天|今晚)?的|今天的|今晚的|刚刚的|刚才的)?${meal}(?:了|的照片|照片|图片)?[。！!，,～~]*$`);
+    return reference.test(value);
+  }
+
   function isExplicitNoteRequest(text) {
     const value = String(text || "").trim();
     return !isBareRecordPrompt(value) && /^(?:记录一下|记录|记下|记一下|帮我记|随手记)[:：]?\s*.+/.test(value);
@@ -640,5 +693,16 @@
     return "我不能在普通回复中确认本地数据已经修改；只有“本地数据操作”结果卡才代表实际写入。";
   }
 
-  return { numberFromText, resolveEventTime, resolveSleepTiming, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealEstimateRequest, isMealCorrectionRequest, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting, isInformationQuery, classifyUserIntent, sanitizeUnverifiedChatReply };
+  // 聊天回复不能伪装成应用里的餐食卡：那样既没有确认按钮，也会和真正的待确认卡冲突。
+  function sanitizeFabricatedMealCard(reply) {
+    const value = String(reply || "").trim();
+    if (!value) return value;
+    const cardLabel = /(?:餐食|饮食)(?:识别|估算)?卡|餐食(?:估算)?结果卡|估算卡/.test(value);
+    const macroHits = ["千卡|大卡|kcal", "蛋白质", "碳水", "脂肪"].filter((pattern) => new RegExp(pattern, "i").test(value)).length;
+    const pendingWording = /(?:待确认|请确认|等待确认|尚未确认|未确认)/.test(value);
+    if (!cardLabel && !(pendingWording && macroHits >= 3)) return value;
+    return "我没有在聊天里生成可确认的餐食卡。要估算或修改这顿饭，直接告诉我具体的食材和份量，例如“牛肉 150 克、一个煎蛋、一包泡面”，应用会生成或重算那张可确认的卡片。";
+  }
+
+  return { numberFromText, resolveEventTime, resolveSleepTiming, expenseCategory, extract, isStructuredRecordRequest, isFoodRecordRequest, isMealEstimateRequest, isMealCorrectionRequest, isMealDetailSupplement, isMealCorrectionIntent, isMealConfirmationRequest, isMealClarificationCancellation, isMealClarificationResponse, needsAIEventInterpretation, isProfileChangeRequest, isProfileQuery, isUniversalLifeEventCandidate, parseDeleteRequest, foodTimeContext, isBareRecordPrompt, isBareMealReference, isExplicitNoteRequest, needsLifeContext, needsTaskContext, expectsConversation, isSimpleGreeting, isInformationQuery, classifyUserIntent, sanitizeUnverifiedChatReply, sanitizeFabricatedMealCard };
 });

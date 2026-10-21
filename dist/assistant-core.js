@@ -15,6 +15,7 @@
 用户的长期偏好是尽量健康、均衡饮食，目前没有食物忌口。不要建议记录体重或心情，也不要追问是否要记录体重或心情。
 应用只保存待办，不具备主动通知或定时提醒能力。可以确认待办已保存，但不要承诺稍后提醒、按时间通知或主动联系用户。
 你所在的应用支持通过聊天指令和“当天”页面新增、编辑、删除本地记录，但这些操作由应用的确定性代码执行，不是由普通聊天回复执行。只有应用显示的“本地数据操作”结果卡才代表实际落库；结果卡支持查看当天和撤销。普通聊天中绝不能虚构“已保存”“已确认”“已记录”“已删除”或“已经同步”；当用户询问能力时，应说明可以使用明确指令，或在“当天”页面人工维护记录，不要笼统地说应用不能修改或删除记录。
+餐食估算卡由应用界面生成，只有卡片上的“确认并计入记录”才会把结果计入统计。普通聊天中不要模仿或生成“餐食估算卡”“待确认”等卡片标题，也不要把一顿饭写成卡片式的热量与三大营养素结论；聊天里不要伪造第二张卡。
 引用待办时必须忠实保留 dueDate 和 done 状态，不得把明天或以后到期的事项说成今天必须完成，也不得把已完成事项说成未完成。
 “没有记录”不等于“没有发生”。总结和建议应使用“现有记录显示”“如果这些是全天记录”等措辞，不要把缺失的餐次、饮水或运动直接断言为用户没做。
 涉及今天、昨天、明天、本周或本月时，必须以请求中提供的“当前本地日期时间”为基准，不得根据最近一条记录的日期猜测今天是哪天。
@@ -99,13 +100,34 @@
     const foods = Array.isArray(result.foods) && result.foods.length ? result.foods.slice(0, 8) : [result.name || "本次饮食"];
     const recognitionText = `${result.name || ""} ${result.note || ""} ${foods.join(" ")}`;
     const explicitlyNonFood = result.is_food === false || /(?:不是|并非|不属于).{0,8}(?:餐食|食物)|非餐食|无法.{0,8}(?:识别|判断).{0,8}(?:餐食|食物)/.test(recognitionText);
+    const clamp = (value, maximum) => {
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0 ? Math.min(number, maximum) : 0;
+    };
+    const items = (Array.isArray(result.items) ? result.items : []).slice(0, 12).map((item, index) => ({
+      id: `item-${index + 1}`,
+      name: String(item?.name || "").trim().slice(0, 60),
+      amount: String(item?.amount || "").trim().slice(0, 40),
+      calories: Math.round(clamp(item?.calories, 10000)),
+      protein: Math.round(clamp(item?.protein, 1000) * 10) / 10,
+      carbs: Math.round(clamp(item?.carbs, 2000) * 10) / 10,
+      fat: Math.round(clamp(item?.fat, 1000) * 10) / 10,
+      source: "ai"
+    })).filter((item) => item.name);
+    const itemTotals = items.length ? items.reduce((sum, item) => ({
+      calories: sum.calories + item.calories,
+      protein: sum.protein + item.protein,
+      carbs: sum.carbs + item.carbs,
+      fat: sum.fat + item.fat
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 }) : null;
     return {
       isFood: !explicitlyNonFood,
-      name: result.name || "本次饮食",
-      calories: Math.max(0, Math.round(Number(result.calories) || 0)),
-      protein: Math.max(0, Math.round(Number(result.protein) || 0)),
-      carbs: Math.max(0, Math.round(Number(result.carbs) || 0)),
-      fat: Math.max(0, Math.round(Number(result.fat) || 0)),
+      name: result.name || (items.length === 1 ? items[0].name : "本次饮食"),
+      items,
+      calories: Math.max(0, Math.round(itemTotals ? itemTotals.calories : Number(result.calories) || 0)),
+      protein: Math.max(0, Math.round((itemTotals ? itemTotals.protein : Number(result.protein) || 0) * 10) / 10),
+      carbs: Math.max(0, Math.round((itemTotals ? itemTotals.carbs : Number(result.carbs) || 0) * 10) / 10),
+      fat: Math.max(0, Math.round((itemTotals ? itemTotals.fat : Number(result.fat) || 0) * 10) / 10),
       foods,
       needsClarification: result.needs_clarification === true,
       question: String(result.question || "这次主要吃了什么？").trim(),
@@ -130,6 +152,9 @@
 {
   "is_food":true或false,
   "name":"简短名称",
+  "items":[
+    {"name":"食物或饮料名称","amount":"粗略份量，例如150克、一包、一个","calories":数字,"protein":数字,"carbs":数字,"fat":数字}
+  ],
   "calories":数字,
   "protein":数字,
   "carbs":数字,
@@ -140,7 +165,8 @@
   "question":"确有必要时，只问一个最关键的问题",
   "note":"一句简短、不过度评价的说明"
 }
-如果图片不是餐食、无法识别食物或完全看不清，必须令 is_food 为 false，四项营养数值都填 0，并在 note 中直接说明原因，不要猜测食物。
+items 必须逐项列出这次吃到的每种食物或饮料（最多 12 项），每项给出自己的热量与三大营养素；calories/protein/carbs/fat 必须等于 items 各项相加。不要把不同食物合并成一项，也不要编造图片里没有的食物；无法拆分的一道混合菜可以按主要成分拆分。
+如果图片不是餐食、无法识别食物或完全看不清，必须令 is_food 为 false，items 为空数组，四项营养数值都填 0，并在 note 中直接说明原因，不要猜测食物。
 正常餐食令 is_food 为 true。只要能识别出具体食物或饮料，就直接按常见份量给出确定的单点估算，needs_clarification 为 false；不要为了克数、品牌、烹调用油或普通配料逐项追问。
 只有完全没有说清吃的是什么，或者关键歧义会让结果失去参考价值时，才令 needs_clarification 为 true，并只提出一个简短问题。所有营养素单位为克，热量单位为千卡。若读取到千焦，必须除以 4.184 换算成千卡。最终热量应与蛋白质×4 + 碳水×4 + 脂肪×9 大致一致，三大营养素总克数也不能明显超过估算食物重量；发现矛盾时应自行修正后再输出。不要输出 JSON 之外的文字。
 用户补充：${text || "未提供"}${profileContext(profile)}`;
@@ -151,10 +177,13 @@
   }
 
   async function reviseMeal({ apiKey, originalText, originalMeal, correction, profile = null }) {
-    const instruction = `用户正在修正一张尚未确认的餐食估算卡。请以用户最新补充为最高优先级，重新计算整顿餐食，并只输出 JSON：
+    const instruction = `用户正在修正一张尚未确认的餐食卡。请以用户最新补充为最高优先级，重新计算整顿餐食，并只输出 JSON：
 {
   "is_food":true或false,
   "name":"修正后的简短名称",
+  "items":[
+    {"name":"食物或饮料名称","amount":"粗略份量","calories":数字,"protein":数字,"carbs":数字,"fat":数字}
+  ],
   "calories":数字,
   "protein":数字,
   "carbs":数字,
@@ -166,10 +195,16 @@
   "note":"一句说明本次按什么信息修正"
 }
 原始饮食描述：${originalText || "未提供"}
-上一次估算：${JSON.stringify(originalMeal || {})}
+上一次估算（含分项）：${JSON.stringify(originalMeal || {})}
 用户最新补充：${correction || "未提供"}
-如果用户提供了小包、半份、一碗、净含量、只吃一部分、食物名称纠正或少油等信息，应直接采用并给出新的单点估算，不要继续追问普通细节。若营养标签使用千焦，必须除以 4.184 换算成千卡。最终热量应与蛋白质×4 + 碳水×4 + 脂肪×9 大致一致，三大营养素总克数不能明显超过修正后的食物重量。只有补充后仍完全无法确定食物或有效份量时，needs_clarification 才为 true。不要输出 JSON 之外的文字。${profileContext(profile)}`;
-    const result = await requestJson(apiKey, [{ role: "user", content: instruction }], 800, "meal_revision");
+规则：
+1. 输出完整的 items 列表，包括这次没有改动的分项；只修改与用户补充直接相关的分项，其余分项尽量保持上一次的数值，不要整餐重新猜一遍。
+2. calories/protein/carbs/fat 必须等于 items 各项相加；分量、热量与三大营养素要在同一套份量下保持一致。
+3. 如果用户只说总热量或总蛋白质，按比例调整各项，保持各项的相对构成，并把差额校正到最相关的一项。
+4. 如果用户提供了小包、半份、一碗、净含量、只吃一部分、食物名称纠正或少油等信息，应直接采用并给出新的单点估算，不要继续追问普通细节。
+5. 营养标签使用千焦时，必须除以 4.184 换算成千卡。最终热量应与蛋白质×4 + 碳水×4 + 脂肪×9 大致一致，三大营养素总克数不能明显超过修正后的食物重量。
+6. 只有补充后仍完全无法确定食物或有效份量时，needs_clarification 才为 true。不要输出 JSON 之外的文字。${profileContext(profile)}`;
+    const result = await requestJson(apiKey, [{ role: "user", content: instruction }], 900, "meal_revision");
     return normalizeMealResult(result);
   }
 
@@ -317,7 +352,7 @@ ${currentTimeContext()}
       ? "\n\n应用已将本条识别为信息查询。请直接回答问题；不要讨论这句话能否写入，不要生成餐食卡，也不要声称修改了本地数据。可以用“现有记录显示”或“根据已记录的数据”描述传入的历史记录。"
       : requestMode === "record_and_query"
         ? "\n\n这句话中的明确事实已由应用另行保存。这里只回答用户提出的问题，不要再次声称保存或修改数据。"
-        : "";
+        : "\n\n这是普通对话。不要在文本里模仿或生成“餐食估算卡”等应用卡片，也不要把一顿饭写成卡片式的热量与三大营养素结论；需要营养估算时，请引导用户直接描述这顿饭的食材和份量，由应用生成可确认的卡片。";
     return requestText(apiKey, [...safeHistory, { role: "user", content: `${text}${currentTimeContext()}${context}${taskContext}${modeContext}${profileContext(profile)}` }], 500, "chat");
   }
 

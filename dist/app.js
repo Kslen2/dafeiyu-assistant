@@ -1,5 +1,5 @@
-const APP_VERSION = "0.10.0";
-const SCHEMA_VERSION = 5;
+const APP_VERSION = "0.11.0";
+const SCHEMA_VERSION = 6;
 const DB_NAME = "dafeiyu-assistant-preview-v2";
 const STORE_NAME = "app-state";
 const STATE_KEY = "primary";
@@ -39,6 +39,11 @@ const formatMessageText = (value = "", allowMarkdown = false) => {
 
 function sanitizeUnverifiedChatReply(reply) {
   return window.FeiyuRecords.sanitizeUnverifiedChatReply(reply);
+}
+
+// 聊天回复既不能声称已写入数据库，也不能伪装成应用里的餐食卡。
+function sanitizeChatReply(reply) {
+  return window.FeiyuRecords.sanitizeFabricatedMealCard(window.FeiyuRecords.sanitizeUnverifiedChatReply(reply));
 }
 
 let db;
@@ -200,50 +205,76 @@ function renderMessage(message) {
   return wrapper;
 }
 
+function mealEntryForMessage(message) {
+  if (!message?.draftId) return null;
+  return state.entries.find((entry) => entry.id === message.draftId && window.FeiyuMeal.isMealType(entry.type)) || null;
+}
+
+function mealViewForMessage(message) {
+  const entry = mealEntryForMessage(message);
+  if (entry) return window.FeiyuMeal.view(entry);
+  if (!message?.meal) return null;
+  return window.FeiyuMeal.view({
+    type: message.confirmed ? "meal" : "meal_draft",
+    data: { ...message.meal, confirmed: Boolean(message.confirmed) }
+  });
+}
+
 function mealCardHtml(message) {
-  const meal = message.meal;
+  const view = mealViewForMessage(message);
+  if (!view) return "";
   const confirmed = Boolean(message.confirmed);
   const superseded = Boolean(message.superseded);
   const deletedRecord = Boolean(message.deletedRecord);
-  if (meal.isFood === false) {
+  const entry = mealEntryForMessage(message);
+  const editable = Boolean(entry) && !deletedRecord && !superseded;
+  const canConfirm = editable && entry.type === "meal_draft" && view.isFood && !view.awaitingClarification && view.items.length > 0;
+
+  if (!view.isFood) {
     return `<article class="rich-card">
       <div class="rich-card-header">
-        <div><span>图片检查</span><h4>${escapeHtml(meal.name || "未识别到餐食")}</h4></div>
+        <div><span>图片检查</span><h4>${escapeHtml(view.name || "未识别到餐食")}</h4></div>
         <span class="estimate-pill">未计入</span>
       </div>
-      <p class="card-note">${escapeHtml(meal.note || "这张图片中没有识别到可估算的餐食，请换一张更清楚的食物照片。")}</p>
+      <p class="card-note">${escapeHtml(view.note || "这张图片中没有识别到可估算的餐食，请换一张更清楚的食物照片。")}</p>
       <button class="confirm-button" disabled>未计入饮食记录</button>
     </article>`;
   }
-  const estimate = (value, min, max) => {
-    if (Number.isFinite(Number(value))) return Math.round(Number(value));
-    const numbers = [min, max].map(Number).filter(Number.isFinite);
-    if (numbers.length) return Math.round(numbers.reduce((sum, item) => sum + item, 0) / numbers.length);
-    const embedded = String(value ?? "").match(/\d+(?:\.\d+)?/g)?.map(Number) || [0];
-    return Math.round(embedded.reduce((sum, item) => sum + item, 0) / embedded.length);
-  };
-  const calories = estimate(meal.calories, meal.caloriesMin, meal.caloriesMax);
-  const protein = estimate(meal.protein);
-  const carbs = estimate(meal.carbs);
-  const fat = estimate(meal.fat);
-  const foods = Array.isArray(meal.foods) ? meal.foods : [meal.name || "本次饮食"];
-  const statusLabel = deletedRecord ? "已删除" : superseded ? "已更新" : message.revisionOf ? "修正估算" : "粗略估算";
-  const buttonLabel = deletedRecord ? "这条记录已删除" : superseded ? "已根据后续补充更新" : confirmed ? "✓ 已计入饮食记录" : "确认并计入记录";
+
+  const statusLabel = deletedRecord ? "已删除" : superseded ? "已更新" : confirmed ? "已确认" : view.awaitingClarification ? "待补充" : view.corrections.length ? `已调整 ${view.corrections.length} 次` : view.manuallyEdited ? "已手动调整" : "粗略估算";
+  const buttonLabel = deletedRecord ? "这条记录已删除" : superseded ? "已根据后续补充更新" : confirmed ? "✓ 已计入饮食记录" : view.awaitingClarification ? "补充食物明细后可确认" : view.items.length ? "确认并计入记录" : "先补充食材明细";
+  const kicker = confirmed ? "餐食记录" : view.corrections.length || view.manuallyEdited ? "餐食估算 · 已调整" : view.sourceType === "photo" ? "餐食识别" : "餐食估算";
+  const totals = view.totals;
+  const itemList = view.items.length
+    ? `<ul class="meal-item-list">${view.items.map((item) => `<li title="蛋白质 ${item.protein}g · 碳水 ${item.carbs}g · 脂肪 ${item.fat}g"><div><strong>${escapeHtml(item.name)}</strong>${item.amount ? `<span>${escapeHtml(item.amount)}</span>` : ""}</div><em>${Math.round(item.calories)} 千卡</em></li>`).join("")}</ul>`
+    : view.foods.length
+      ? `<ul class="food-list">${view.foods.map((food) => `<li>${escapeHtml(food)}</li>`).join("")}</ul>`
+      : "";
+  const itemMeta = view.items.length ? `<p class="meal-item-count">共 ${view.items.length} 项 · 合计由各项相加</p>` : "";
+  const note = view.note ? `<p class="card-note">${escapeHtml(view.note)}</p>` : "";
+  const actions = editable
+    ? `<div class="meal-card-actions">
+        <button type="button" class="secondary-button" data-edit-meal="${escapeHtml(entry.id)}">调整</button>
+        <button type="button" class="confirm-button" data-confirm-meal="${escapeHtml(message.id)}" ${canConfirm ? "" : "disabled"}>${buttonLabel}</button>
+      </div>
+      <p class="revision-hint">${confirmed ? "点“调整”可修改这条已计入的记录，合计会按各项重新计算。" : view.awaitingClarification ? "还缺食物明细，点“调整”补充后即可确认。" : "点“调整”可直接改食材、份量或单项热量；也可以在聊天里补充。"}</p>`
+    : `<button class="confirm-button" disabled>${buttonLabel}</button>`;
+
   return `<article class="rich-card${superseded || deletedRecord ? " superseded-card" : ""}">
     <div class="rich-card-header">
-      <div><span>${message.revisionOf ? "餐食修正" : "餐食识别"}${message.simulated ? " · 原型演示" : ""}</span><h4>${escapeHtml(meal.name)}</h4></div>
+      <div><span>${kicker}${message.simulated ? " · 原型演示" : ""}</span><h4>${escapeHtml(view.name)}</h4></div>
       <span class="estimate-pill">${statusLabel}</span>
     </div>
-    <div class="calorie-line"><strong>${calories}</strong><span>千卡 · 估算值</span></div>
+    <div class="calorie-line"><strong>${totals.calories}</strong><span>千卡 · ${confirmed ? "已确认" : "估算值"}</span></div>
     <div class="macro-grid">
-      <div class="macro-item"><span>蛋白质</span><strong>${protein}g</strong></div>
-      <div class="macro-item"><span>碳水</span><strong>${carbs}g</strong></div>
-      <div class="macro-item"><span>脂肪</span><strong>${fat}g</strong></div>
+      <div class="macro-item"><span>蛋白质</span><strong>${totals.protein}g</strong></div>
+      <div class="macro-item"><span>碳水</span><strong>${totals.carbs}g</strong></div>
+      <div class="macro-item"><span>脂肪</span><strong>${totals.fat}g</strong></div>
     </div>
-    <ul class="food-list">${foods.map((food) => `<li>${escapeHtml(food)}</li>`).join("")}</ul>
-    <p class="card-note">${escapeHtml(meal.note)}</p>
-    <button class="confirm-button" data-confirm-meal="${message.id}" ${confirmed || superseded || deletedRecord ? "disabled" : ""}>${buttonLabel}</button>
-    ${!confirmed && !superseded && !deletedRecord ? '<p class="revision-hint">份量或食物不对？直接在聊天里补充，我会重新估算。</p>' : ""}
+    ${itemList}
+    ${itemMeta}
+    ${note}
+    ${actions}
   </article>`;
 }
 
@@ -429,25 +460,124 @@ function isFoodRecordRequest(text) {
   return window.FeiyuRecords.isFoodRecordRequest(text);
 }
 
-function recentMealContext() {
-  const pending = [...state.entries].reverse().find((entry) => {
-    if (entry.type !== "meal_note" || entry.data?.analyzed) return false;
-    const age = Date.now() - new Date(entry.createdAt).getTime();
-    return entry.date === dateKey(0) || age < 24 * 60 * 60 * 1000;
-  });
-  if (pending) return { description: pending.data.description || pending.sourceText, sourceEntryId: pending.id };
+function mealDraftAgeOk(entry) {
+  const age = Date.now() - new Date(entry.createdAt || 0).getTime();
+  return entry.date === dateKey(0) || age < 24 * 60 * 60 * 1000;
+}
 
+function latestMealDraft({ awaitingClarification = null } = {}) {
+  return [...state.entries].reverse().find((entry) => {
+    if (entry.type !== "meal_draft" || entry.source === "demo" || !mealDraftAgeOk(entry)) return false;
+    if (awaitingClarification === null) return true;
+    return Boolean(entry.data?.awaitingClarification) === awaitingClarification;
+  }) || null;
+}
+
+function latestPendingMealDraft() {
+  const draft = latestMealDraft({ awaitingClarification: false });
+  if (!draft) return null;
+  const view = window.FeiyuMeal.view(draft);
+  return view.isFood && view.items.length ? draft : null;
+}
+
+function pendingMealClarificationContext() {
+  const draft = latestMealDraft({ awaitingClarification: true });
+  if (!draft) return null;
+  const view = window.FeiyuMeal.view(draft);
+  if (!view.isFood) return null;
+  return { entry: draft, description: view.description || draft.sourceText || "", view };
+}
+
+function recentMealContext() {
+  const draft = latestMealDraft();
+  if (draft) {
+    const view = window.FeiyuMeal.view(draft);
+    return { description: view.description || draft.sourceText || "", draftId: draft.id };
+  }
   const previousFoodMessage = state.messages.slice(0, -1).reverse().find((message) =>
     message.role === "user" && message.type === "text" && isFoodRecordRequest(message.text) && !isMealEstimateRequest(message.text)
   );
-  return previousFoodMessage ? { description: previousFoodMessage.text, sourceEntryId: null } : null;
+  return previousFoodMessage ? { description: previousFoodMessage.text, draftId: null } : null;
 }
 
-function latestPendingMealMessage() {
-  return [...state.messages].reverse().find((message) =>
-    message.role === "assistant" && message.type === "meal" && !message.confirmed && !message.superseded && message.meal?.isFood !== false
-      && Date.now() - new Date(message.createdAt).getTime() < 24 * 60 * 60 * 1000
-  ) || null;
+function createMealDraft({ description, sourceType, dateRef = new Date(), timeContext = "", imageName = "" }) {
+  const data = {
+    description: String(description || "").trim().slice(0, 500),
+    sourceType,
+    name: "",
+    items: [],
+    foods: [],
+    note: "",
+    uncertainties: [],
+    status: "estimating",
+    awaitingClarification: false,
+    corrections: [],
+    isFood: true
+  };
+  if (imageName) data.imageName = imageName;
+  const draft = addEntry("meal_draft", data, description, dateRef, timeContext || description);
+  draft.data.status = "estimating";
+  return draft;
+}
+
+function mealCardMessageForDraft(draft) {
+  return state.messages.find((message) => message.type === "meal" && message.draftId === draft.id) || null;
+}
+
+function addMealCardMessage(draft, { recordedText = "", at } = {}) {
+  const existing = mealCardMessageForDraft(draft);
+  if (existing) {
+    existing.confirmed = draft.type === "meal";
+    return existing;
+  }
+  return addMessage({
+    role: "assistant",
+    type: "meal",
+    draftId: draft.id,
+    confirmed: draft.type === "meal",
+    recordedText: recordedText || draft.data.description || "",
+    mealRecordedAt: at || draft.createdAt
+  });
+}
+
+function removeMealDraft(draft) {
+  const message = mealCardMessageForDraft(draft);
+  state.entries = state.entries.filter((entry) => entry.id !== draft.id);
+  if (message) state.messages = state.messages.filter((item) => item.id !== message.id);
+}
+
+async function analyzeMealIntoDraft({ description, sourceType, dateRef = new Date(), timeContext = "", imageDataUrl = "", recordedText = "", imageName = "" }) {
+  const draft = createMealDraft({ description, sourceType, dateRef, timeContext, imageName });
+  try {
+    const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text: description, imageDataUrl, profile: currentProfile() });
+    if (meal.isFood === false) {
+      removeMealDraft(draft);
+      return { draft: null, meal };
+    }
+    window.FeiyuMeal.applyMeal(draft, meal, { description, sourceType });
+    if (meal.needsClarification) {
+      draft.data.status = "clarify";
+      draft.data.awaitingClarification = true;
+      addMessage({ role: "assistant", type: "text", text: meal.question || "这次主要吃了什么？", sourceEntryId: draft.id });
+    } else {
+      addMealCardMessage(draft, { recordedText, at: dateRef });
+    }
+    return { draft, meal };
+  } catch (error) {
+    removeMealDraft(draft);
+    throw error;
+  }
+}
+
+function scrollToMealCard(messageId) {
+  if (!messageId) return;
+  requestAnimationFrame(() => {
+    const node = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (!node) return;
+    node.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    node.classList.add("message-highlight");
+    setTimeout(() => node.classList.remove("message-highlight"), 1600);
+  });
 }
 
 function latestPendingProfileMessage() {
@@ -458,15 +588,6 @@ function latestPendingProfileMessage() {
 
 function currentProfile() {
   return window.FeiyuProfile.normalize(state.settings?.profile);
-}
-
-function pendingMealClarificationContext() {
-  const entry = [...state.entries].reverse().find((item) => {
-    if (item.type !== "meal_note" || !item.data?.awaitingClarification || item.data?.analyzed) return false;
-    const age = Date.now() - new Date(item.createdAt).getTime();
-    return item.date === dateKey(0) || age < 24 * 60 * 60 * 1000;
-  });
-  return entry ? { entry, description: entry.data.description || entry.sourceText || "" } : null;
 }
 
 function isMealCorrectionRequest(text) {
@@ -510,12 +631,14 @@ function parseDeleteRequest(text) {
 }
 
 function recordTypeLabel(type) {
-  return ({ meal: "饮食", meal_note: "饮食", expense: "消费", water: "饮水", exercise: "运动", sleep: "睡眠", life_event: "生活事件", note: "生活" })[type] || "生活";
+  return ({ meal: "饮食", meal_draft: "饮食", meal_note: "饮食", expense: "消费", water: "饮水", exercise: "运动", sleep: "睡眠", life_event: "生活事件", note: "生活" })[type] || "生活";
 }
 
 function markEntryMessagesDeleted(removedIds) {
   state.messages.forEach((message) => {
-    if (message.type === "meal" && message.sourceEntryId && removedIds.has(message.sourceEntryId)) {
+    if (message.type !== "meal") return;
+    const linkedId = message.draftId || message.sourceEntryId;
+    if (linkedId && removedIds.has(linkedId)) {
       message.deletedRecord = true;
       message.superseded = true;
     }
@@ -542,9 +665,10 @@ async function undoOperation(messageId) {
   state.tasks = restored.tasks;
 
   state.messages.forEach((item) => {
-    if (!item.sourceEntryId) return;
-    if (createdEntryIds.has(item.sourceEntryId)) item.confirmed = false;
-    if (deletedEntries.some((entry) => entry.id === item.sourceEntryId)) {
+    const linkedId = item.draftId || item.sourceEntryId;
+    if (!linkedId) return;
+    if (createdEntryIds.has(linkedId)) item.confirmed = false;
+    if (deletedEntries.some((entry) => entry.id === linkedId)) {
       item.deletedRecord = false;
       if (item.superseded && !item.revisionOf) item.superseded = false;
     }
@@ -597,10 +721,14 @@ function recentTasksForAI(days = 31) {
 function recentConversationHistory() {
   return state.messages.slice(0, -1).map((message) => {
     if (message.type === "text" || message.type === "ack") return { role: message.role, content: message.text };
-    if (message.type === "meal" && message.meal) {
-      const meal = message.meal;
-      const status = message.superseded ? "已被后续修正" : message.confirmed ? "已确认" : "待确认";
-      return { role: "assistant", content: `餐食估算卡（${status}）：${meal.name}，约${meal.calories}千卡，蛋白质${meal.protein}克，碳水${meal.carbs}克，脂肪${meal.fat}克；食物：${(meal.foods || []).join("、")}` };
+    if (message.type === "meal") {
+      const view = mealViewForMessage(message);
+      if (!view) return null;
+      const status = message.superseded ? "已被后续补充更新" : message.confirmed ? "已确认" : "等待用户确认";
+      const items = view.items.length
+        ? `；分项：${view.items.map((item) => `${item.name}${item.amount ? ` ${item.amount}` : ""} ${Math.round(item.calories)}千卡`).join("、")}`
+        : "";
+      return { role: "assistant", content: `助手此前通过应用卡片给出了餐食估算（${status}）：${view.name}，约${view.totals.calories}千卡，蛋白质${view.totals.protein}克，碳水${view.totals.carbs}克，脂肪${view.totals.fat}克${items}` };
     }
     return null;
   }).filter(Boolean).slice(-8);
@@ -610,7 +738,8 @@ function recentLifeEntries(days = 7) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - Math.max(1, Number(days) || 7));
   const limit = days > 7 ? 220 : 80;
-  return state.entries.filter((entry) => new Date(`${entry.date}T00:00:00`) >= cutoff).slice(-limit);
+  // 未确认的餐食草稿不是生活事实，不能作为 AI 结构化操作的依据。
+  return state.entries.filter((entry) => entry.type !== "meal_draft" && new Date(`${entry.date}T00:00:00`) >= cutoff).slice(-limit);
 }
 
 const EXPENSE_CATEGORIES = new Set(["餐饮", "交通", "购物", "居住", "医疗健康", "娱乐", "学习办公", "人情往来", "其他"]);
@@ -693,9 +822,27 @@ function applyInterpretedActions(actions, sourceText, referenceValue = new Date(
       }
     } else if (entry.type === "meal") {
       if (data.name !== undefined) next.name = String(data.name).slice(0, 60);
-      for (const [key, maximum] of [["calories", 10000], ["protein", 1000], ["carbs", 2000], ["fat", 1000]]) {
-        const value = data[key] === undefined ? null : validPositiveNumber(data[key], maximum);
-        if (value !== null) next[key] = Math.round(value);
+      if (Array.isArray(data.items)) {
+        const temp = { ...entry, data: next };
+        window.FeiyuMeal.applyItems(temp, data.items, { name: next.name });
+        Object.assign(next, temp.data);
+      } else {
+        const requested = {};
+        for (const [key, maximum] of [["calories", 10000], ["protein", 1000], ["carbs", 2000], ["fat", 1000]]) {
+          const value = data[key] === undefined ? null : validPositiveNumber(data[key], maximum);
+          if (value !== null) requested[key] = Math.round(value);
+        }
+        if (Object.keys(requested).length) {
+          // 只改总数时按比例缩放各项，保证“合计 = 各项相加”始终成立。
+          const currentItems = window.FeiyuMeal.normalizeItems(next.items);
+          if (currentItems.length) {
+            const from = window.FeiyuMeal.totals(currentItems);
+            next.items = window.FeiyuMeal.scaleItems(currentItems, from, { ...from, ...requested });
+            Object.assign(next, window.FeiyuMeal.totals(next.items));
+          } else {
+            Object.assign(next, requested);
+          }
+        }
       }
     } else if (entry.type === "life_event") {
       if (data.title !== undefined) next.title = String(data.title).slice(0, 60);
@@ -789,7 +936,7 @@ async function handleSend() {
   if (!text && !pendingPhoto) return;
   const photo = pendingPhoto;
   const priorPendingProfile = latestPendingProfileMessage();
-  const priorPendingMeal = latestPendingMealMessage();
+  const priorPendingMealDraft = latestPendingMealDraft();
   const priorMealClarification = pendingMealClarificationContext();
   pendingPhoto = null;
   leaveDemoMode();
@@ -799,7 +946,7 @@ async function handleSend() {
     text,
     hasPhoto: Boolean(photo),
     hasPendingProfile: Boolean(priorPendingProfile),
-    hasPendingMeal: Boolean(priorPendingMeal),
+    hasPendingMeal: Boolean(priorPendingMealDraft),
     hasPendingMealClarification: Boolean(priorMealClarification)
   }));
   const requestIntent = routing.intent;
@@ -810,6 +957,7 @@ async function handleSend() {
   renderMessages(true);
 
   let mutationApplied = false;
+  let scrollTargetMessageId = null;
   try {
     const deleteRequest = routing.deleteRequest || null;
     if (routing.route === "delete") {
@@ -837,8 +985,18 @@ async function handleSend() {
     } else if (routing.route === "photo") {
       setRequestState(true, "正在识别这顿饭…");
       const imageDataUrl = await compressImage(photo);
-      const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text, imageDataUrl, profile: currentProfile() });
-      addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, recordedText: text, mealRecordedAt: userMessage.createdAt });
+      const { draft, meal } = await analyzeMealIntoDraft({
+        description: text || "餐食照片",
+        sourceType: "photo",
+        dateRef: userMessage.createdAt,
+        timeContext: text,
+        imageDataUrl,
+        recordedText: text,
+        imageName: photo.name
+      });
+      if (!draft && meal?.isFood === false) {
+        addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, recordedText: text, mealRecordedAt: userMessage.createdAt });
+      }
     } else if (routing.route === "day_summary") {
       setRequestState(true, "正在整理今天的记录…");
       const base = todaySummary();
@@ -861,37 +1019,52 @@ async function handleSend() {
       mutationApplied = true;
       addMessage({ role: "assistant", type: "ack", text: "已取消这次个性化设置修改。" });
     } else if (routing.route === "meal_confirm") {
-      const pendingMessage = priorPendingMeal;
-      await confirmMeal(pendingMessage.id);
-      mutationApplied = true;
-    } else if (["meal_clarification_cancel", "meal_clarification_response"].includes(routing.route)) {
-      const context = priorMealClarification;
-      if (routing.route === "meal_clarification_cancel") {
-        state.entries = state.entries.filter((entry) => entry.id !== context.entry.id);
+      const draft = priorPendingMealDraft;
+      const pendingMessage = draft ? mealCardMessageForDraft(draft) : null;
+      if (pendingMessage) {
+        await confirmMeal(pendingMessage.id);
         mutationApplied = true;
-        addMessage({ role: "assistant", type: "ack", text: "已取消这条待补充的饮食记录。" });
       } else {
-        context.entry.data.corrections = [...(context.entry.data.corrections || []), text];
-        setRequestState(true, "正在根据补充内容估算…");
-        const analysisText = `${context.description}\n用户补充：${text}`;
-        const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text: analysisText, imageDataUrl: "", profile: currentProfile() });
-        if (meal.needsClarification) {
-          context.entry.data.awaitingClarification = true;
-          addMessage({ role: "assistant", type: "text", text: meal.question || "还需要确认一个关键内容。", sourceEntryId: context.entry.id });
-        } else {
-          context.entry.data.awaitingClarification = false;
-          context.entry.data.analyzed = true;
-          addMessage({
-            role: "assistant",
-            type: "meal",
-            meal,
-            simulated: false,
-            confirmed: false,
-            sourceEntryId: context.entry.id,
-            recordedText: context.description,
-            mealRecordedAt: context.entry.createdAt
-          });
-        }
+        addMessage({ role: "assistant", type: "text", text: "当前没有可以确认的餐食卡。" });
+      }
+    } else if (routing.route === "meal_clarification_cancel") {
+      const context = priorMealClarification;
+      if (context) removeMealDraft(context.entry);
+      mutationApplied = true;
+      addMessage({ role: "assistant", type: "ack", text: "已取消这条待补充的饮食记录。" });
+    } else if (routing.route === "meal_clarification_response") {
+      const context = priorMealClarification;
+      const draft = context.entry;
+      const before = window.FeiyuMeal.view(draft);
+      draft.data.corrections = [...(draft.data.corrections || []), text];
+      setRequestState(true, "正在根据补充内容估算…");
+      const analysisText = [
+        before.description || draft.sourceText || "",
+        ...before.corrections.map((item) => `之前补充：${item}`),
+        `用户补充：${text}`
+      ].filter(Boolean).join("\n");
+      const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text: analysisText, imageDataUrl: "", profile: currentProfile() });
+      if (meal.isFood === false) {
+        removeMealDraft(draft);
+        mutationApplied = true;
+        addMessage({ role: "assistant", type: "text", text: "这段内容没有识别出可估算的食物，这条待补充记录已移除。" });
+      } else if (meal.needsClarification) {
+        draft.data.status = "clarify";
+        draft.data.awaitingClarification = true;
+        addMessage({ role: "assistant", type: "text", text: meal.question || "还需要确认一个关键内容。", sourceEntryId: draft.id });
+      } else {
+        window.FeiyuMeal.applyMeal(draft, meal, {
+          description: before.description || draft.sourceText || "",
+          sourceType: before.sourceType,
+          corrections: draft.data.corrections
+        });
+        draft.data.status = "ready";
+        draft.data.awaitingClarification = false;
+        const cardMessage = addMealCardMessage(draft, { recordedText: before.description || text, at: draft.createdAt });
+        const after = window.FeiyuMeal.view(draft);
+        mutationApplied = true;
+        addMessage({ role: "assistant", type: "ack", text: `已生成餐食卡：${after.name}，共 ${after.items.length} 项，可以调整或确认。` });
+        scrollTargetMessageId = cardMessage.id;
       }
     } else if (routing.route === "meal_confirmation_missing") {
       const clarification = priorMealClarification;
@@ -903,35 +1076,62 @@ async function handleSend() {
           : "当前没有等待确认的餐食卡；已经确认过的记录不会重复写入。"
       });
     } else if (routing.route === "meal_correction") {
-      const previous = priorPendingMeal;
-      const sourceEntry = previous.sourceEntryId ? state.entries.find((entry) => entry.id === previous.sourceEntryId) : null;
-      const originalText = previous.recordedText || sourceEntry?.data?.description || sourceEntry?.sourceText || "";
+      const draft = priorPendingMealDraft;
+      const before = window.FeiyuMeal.view(draft);
+      const originalText = before.description || draft.sourceText || "";
       setRequestState(true, "正在按补充信息修正…");
-      const meal = await window.FeiyuAI.reviseMeal({ apiKey: state.settings.apiKey, originalText, originalMeal: previous.meal, correction: text, profile: currentProfile() });
-      if (meal.needsClarification) {
+      const meal = await window.FeiyuAI.reviseMeal({
+        apiKey: state.settings.apiKey,
+        originalText,
+        originalMeal: { name: before.name, ...before.totals, items: before.items },
+        correction: text,
+        profile: currentProfile()
+      });
+      if (meal.isFood === false) {
+        addMessage({ role: "assistant", type: "text", text: "这段补充没有识别出可估算的食物，这张卡保持原样。" });
+      } else if (meal.needsClarification) {
+        draft.data.status = "clarify";
+        draft.data.awaitingClarification = true;
+        draft.data.corrections = [...(draft.data.corrections || []), text];
         addMessage({ role: "assistant", type: "text", text: meal.question || "还需要确认一个关键份量。" });
       } else {
-        previous.superseded = true;
-        if (sourceEntry?.type === "meal_note") {
-          sourceEntry.data.corrections = [...(sourceEntry.data.corrections || []), text];
-          sourceEntry.data.analyzed = true;
-        }
-        addMessage({
-          role: "assistant",
-          type: "meal",
-          meal,
-          simulated: false,
-          confirmed: false,
-          revisionOf: previous.id,
-          sourceEntryId: previous.sourceEntryId || null,
-          recordedText: originalText,
-          mealRecordedAt: previous.mealRecordedAt || previous.createdAt
+        draft.data.corrections = [...(draft.data.corrections || []), text];
+        window.FeiyuMeal.applyMeal(draft, meal, {
+          description: originalText,
+          sourceType: before.sourceType,
+          corrections: draft.data.corrections
         });
+        draft.data.status = "ready";
+        draft.data.awaitingClarification = false;
+        const cardMessage = mealCardMessageForDraft(draft) || addMealCardMessage(draft, { recordedText: originalText, at: draft.createdAt });
+        const after = window.FeiyuMeal.view(draft);
+        mutationApplied = true;
+        addMessage({ role: "assistant", type: "text", text: `已按补充更新这张卡：${after.name}，共 ${after.items.length} 项，${after.totals.calories} 千卡。` });
+        scrollTargetMessageId = cardMessage.id;
       }
+    } else if (routing.route === "meal_correction_prompt") {
+      const draft = priorPendingMealDraft;
+      const view = draft ? window.FeiyuMeal.view(draft) : null;
+      addMessage({
+        role: "assistant",
+        type: "text",
+        text: view
+          ? `这张卡目前是「${view.name}」约 ${view.totals.calories} 千卡，共 ${view.items.length} 项。要改哪里？直接说食材和份量，或点卡片上的“调整”逐项修改。`
+          : "当前没有等待确认的餐食卡。"
+      });
+    } else if (routing.route === "meal_caption") {
+      const draft = priorPendingMealDraft || priorMealClarification?.entry || null;
+      addMessage({
+        role: "assistant",
+        type: "text",
+        text: draft
+          ? "上面这张餐食卡还没有确认。点“调整”可以直接改食材和份量，也可以继续在聊天里补充；确认后才会计入统计。"
+          : "这顿饭吃了什么？可以发一张照片，或直接说食材和大概份量，我来估算。"
+      });
     } else if (routing.route === "profile_query") {
       setRequestState(true, "正在查看你的个性化设置…");
       const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: [], entries: [], tasks: [], profile: currentProfile(), requestMode: "query" });
-      addMessage({ role: "assistant", type: "text", text: sanitizeUnverifiedChatReply(reply) });
+      addMessage({ role: "assistant", type: "text", text: sanitizeChatReply(reply) });
     } else if (routing.route === "ai_event") {
       setRequestState(true, "正在理解这条生活记录…");
       const plan = await window.FeiyuAI.interpretLifeEvent({
@@ -952,14 +1152,15 @@ async function handleSend() {
       if (profilePatch) addMessage({ role: "assistant", type: "profile_change", profilePatch, descriptions: window.FeiyuProfile.describePatch(profilePatch), confirmed: false, cancelled: false });
 
       if (plan.mealText) {
-        const pendingMeal = addEntry("meal_note", { description: plan.mealText, analyzed: false }, text, userMessage.createdAt, text);
-        const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text: plan.mealText, imageDataUrl: "", profile: currentProfile() });
-        if (meal.needsClarification) {
-          pendingMeal.data.awaitingClarification = true;
-          addMessage({ role: "assistant", type: "text", text: meal.question || "这次实际吃了什么？", sourceEntryId: pendingMeal.id });
-        } else {
-          pendingMeal.data.analyzed = true;
-          addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, sourceEntryId: pendingMeal.id, recordedText: plan.mealText, mealRecordedAt: userMessage.createdAt });
+        const { draft, meal } = await analyzeMealIntoDraft({
+          description: plan.mealText,
+          sourceType: "text",
+          dateRef: userMessage.createdAt,
+          timeContext: text,
+          recordedText: plan.mealText
+        });
+        if (!draft && meal?.isFood === false) {
+          addMessage({ role: "assistant", type: "text", text: "这段内容没有识别出可估算的食物，因此没有生成餐食卡。" });
         }
       }
 
@@ -973,29 +1174,56 @@ async function handleSend() {
       const currentHasFood = isFoodRecordRequest(text) && !/^(?:帮我)?算(?:一下)?(?:这(?:个|顿|次))?(?:的)?(?:摄入|热量)[吧。！!？?]*$/.test(text.trim());
       const context = currentHasFood ? null : recentMealContext();
       const analysisText = context ? `${context.description}\n用户追问：${text}` : text;
-      const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text: analysisText, imageDataUrl: "", profile: currentProfile() });
       const mealRecordedAt = currentHasFood
         ? window.FeiyuRecords.resolveEventTime(window.FeiyuRecords.foodTimeContext(text), userMessage.createdAt).occurredAt
         : undefined;
-      addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, sourceEntryId: context?.sourceEntryId || null, recordedText: currentHasFood ? text : context?.description || text, mealRecordedAt });
+      const existingDraft = context?.draftId ? state.entries.find((entry) => entry.id === context.draftId && entry.type === "meal_draft") : null;
+      if (existingDraft) {
+        const before = window.FeiyuMeal.view(existingDraft);
+        const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text: analysisText, imageDataUrl: "", profile: currentProfile() });
+        if (meal.isFood !== false && !meal.needsClarification) {
+          window.FeiyuMeal.applyMeal(existingDraft, meal, { description: before.description, sourceType: before.sourceType, corrections: before.corrections });
+          existingDraft.data.status = "ready";
+          existingDraft.data.awaitingClarification = false;
+          const cardMessage = addMealCardMessage(existingDraft, { recordedText: before.description || text, at: existingDraft.createdAt });
+          const after = window.FeiyuMeal.view(existingDraft);
+          addMessage({ role: "assistant", type: "text", text: `已更新这张卡：${after.name}，${after.totals.calories} 千卡，共 ${after.items.length} 项。` });
+          scrollTargetMessageId = cardMessage.id;
+        } else if (meal.needsClarification) {
+          existingDraft.data.status = "clarify";
+          existingDraft.data.awaitingClarification = true;
+          addMessage({ role: "assistant", type: "text", text: meal.question || "还需要确认一个关键份量。" });
+        }
+      } else {
+        const { draft, meal } = await analyzeMealIntoDraft({
+          description: analysisText,
+          sourceType: "estimate",
+          dateRef: mealRecordedAt ? new Date(mealRecordedAt) : userMessage.createdAt,
+          timeContext: currentHasFood ? text : context?.description || text,
+          recordedText: currentHasFood ? text : context?.description || text
+        });
+        if (!draft && meal?.isFood === false) {
+          addMessage({ role: "assistant", type: "text", text: "这段内容没有识别出可估算的食物。" });
+        }
+      }
     } else if (routing.route === "food_record") {
       const otherRecords = isStructuredRecordRequest(text) ? parseAndRecord(text) : { labels: [], entryIds: [], taskIds: [], date: "" };
-      const pendingMeal = addEntry("meal_note", { description: text, analyzed: false }, text, new Date(), window.FeiyuRecords.foodTimeContext(text));
-      mutationApplied = true;
-      await saveState();
       setRequestState(true, "正在估算饮食摄入…");
-      const meal = await window.FeiyuAI.analyzeMeal({ apiKey: state.settings.apiKey, text, imageDataUrl: "", profile: currentProfile() });
+      const { draft, meal } = await analyzeMealIntoDraft({
+        description: text,
+        sourceType: "text",
+        dateRef: new Date(),
+        timeContext: window.FeiyuRecords.foodTimeContext(text),
+        recordedText: text
+      });
       if (otherRecords.labels.length) addOperationReceipt("同时保存了其他记录", otherRecords.labels, {
         createdEntryIds: otherRecords.entryIds,
         createdTaskIds: otherRecords.taskIds,
         date: otherRecords.date
       });
-      if (meal.needsClarification) {
-        pendingMeal.data.awaitingClarification = true;
-        addMessage({ role: "assistant", type: "text", text: meal.question || "这次主要吃了什么？", sourceEntryId: pendingMeal.id });
-      } else {
-        pendingMeal.data.analyzed = true;
-        addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, sourceEntryId: pendingMeal.id, recordedText: text });
+      mutationApplied = Boolean(draft) || otherRecords.labels.length > 0;
+      if (!draft && meal?.isFood === false) {
+        addMessage({ role: "assistant", type: "meal", meal, simulated: false, confirmed: false, recordedText: text });
       }
     } else {
       if (routing.route === "structured_record") {
@@ -1009,7 +1237,7 @@ async function handleSend() {
         if (routing.replyAfterMutation) {
           setRequestState(true, "大肥鱼正在想…");
           const reply = await window.FeiyuAI.chat({ apiKey: state.settings.apiKey, text, history: isPeriodSummaryRequest(text) ? [] : recentConversationHistory(), entries: needsLifeContext(text) ? recentLifeEntries(lifeContextDays(text)) : [], tasks: needsTaskContext(text) || isPeriodSummaryRequest(text) ? recentTasksForAI(lifeContextDays(text)) : [], profile: currentProfile(), requestMode: requestIntent });
-          addMessage({ role: "assistant", type: "text", text: reply });
+          addMessage({ role: "assistant", type: "text", text: sanitizeChatReply(reply) });
         }
       } else {
         setRequestState(true, "大肥鱼正在回复…");
@@ -1022,7 +1250,7 @@ async function handleSend() {
           profile: currentProfile(),
           requestMode: requestIntent
         });
-        addMessage({ role: "assistant", type: "text", text: sanitizeUnverifiedChatReply(reply) });
+        addMessage({ role: "assistant", type: "text", text: sanitizeChatReply(reply) });
       }
     }
   } catch (error) {
@@ -1037,6 +1265,7 @@ async function handleSend() {
     setRequestState(false);
     await saveState();
     renderMessages(true);
+    if (scrollTargetMessageId) scrollToMealCard(scrollTargetMessageId);
     renderDay();
     renderTrends();
     renderTasks();
@@ -1044,48 +1273,36 @@ async function handleSend() {
 }
 
 async function confirmMeal(messageId) {
-  const message = state.messages.find((item) => item.id === messageId);
+  const message = state.messages.find((item) => item.id === messageId && item.type === "meal");
   if (!message || message.confirmed || message.superseded || message.deletedRecord) return;
-  const meal = message.meal;
-  const midpointOf = (range) => {
-    if (Number.isFinite(Number(range))) return Math.round(Number(range));
-    const numbers = String(range).match(/\d+/g)?.map(Number) || [0];
-    return numbers.length > 1 ? Math.round((numbers[0] + numbers[1]) / 2) : numbers[0];
-  };
-  const calories = Number.isFinite(Number(meal.calories))
-    ? Math.round(Number(meal.calories))
-    : Math.round((Number(meal.caloriesMin || 0) + Number(meal.caloriesMax || meal.caloriesMin || 0)) / 2);
-  const mealData = {
-    name: meal.name,
-    calories,
-    protein: midpointOf(meal.protein),
-    carbs: midpointOf(meal.carbs),
-    fat: midpointOf(meal.fat),
-    confirmed: true
-  };
-  const sourceEntry = message.sourceEntryId ? state.entries.find((entry) => entry.id === message.sourceEntryId) : null;
-  const previousEntry = sourceEntry ? cloneValue(sourceEntry) : null;
-  let createdEntry = null;
-  if (sourceEntry) {
-    const baseDescription = sourceEntry.data?.description || sourceEntry.sourceText || "";
-    const corrections = Array.isArray(sourceEntry.data?.corrections) ? sourceEntry.data.corrections : [];
-    const description = [baseDescription, ...corrections.map((item) => `补充：${item}`)].filter(Boolean).join("；");
-    sourceEntry.type = "meal";
-    sourceEntry.data = { ...mealData, description };
-    sourceEntry.sourceText = sourceEntry.sourceText || description || "餐食识别确认";
-  } else {
-    const newEntry = addEntry("meal", mealData, message.recordedText || "餐食识别确认", message.mealRecordedAt || message.createdAt);
-    message.sourceEntryId = newEntry.id;
-    createdEntry = newEntry;
+  const draft = mealEntryForMessage(message);
+  if (!draft || draft.type !== "meal_draft") {
+    showToast("这条餐食没有可确认的草稿");
+    return;
   }
+  const view = window.FeiyuMeal.view(draft);
+  if (view.awaitingClarification || !view.items.length) {
+    showToast("先补充食物明细再确认");
+    return;
+  }
+  const previousEntry = cloneValue(draft);
+  draft.type = "meal";
+  draft.data = {
+    ...draft.data,
+    ...view.totals,
+    status: "confirmed",
+    confirmed: true,
+    confirmedAt: nowIso()
+  };
   message.confirmed = true;
   addOperationReceipt("饮食已确认并计入统计", [
-    `${mealData.name}：${mealData.calories} 千卡`,
-    `蛋白质 ${mealData.protein}g · 碳水 ${mealData.carbs}g · 脂肪 ${mealData.fat}g`
+    `${view.name}：${view.totals.calories} 千卡`,
+    `蛋白质 ${view.totals.protein}g · 碳水 ${view.totals.carbs}g · 脂肪 ${view.totals.fat}g`,
+    `食材明细 ${view.items.length} 项已随记录保存`
   ], {
-    createdEntryIds: createdEntry ? [createdEntry.id] : [],
-    previousEntries: previousEntry ? [previousEntry] : [],
-    date: createdEntry?.date || sourceEntry?.date || dateKey(0),
+    createdEntryIds: [],
+    previousEntries: [previousEntry],
+    date: draft.date,
     unconfirmMessageId: message.id
   });
   await saveState();
@@ -1179,6 +1396,7 @@ function dayEntryPresentation(entry) {
   if (data.steps) exerciseParts.push(`${data.steps} 步`);
   if (data.sets) exerciseParts.push(`${data.sets} 组`);
   if (data.reps) exerciseParts.push(`${data.reps} 次`);
+  const mealView = window.FeiyuMeal.isMealType(entry.type) ? window.FeiyuMeal.view(entry) : null;
   const formats = {
     sleep: ["☾", "睡眠", sleepParts.join(" · ") || "已记录"],
     water: ["◌", "饮水", `${Number(data.ml || 0)}ml`],
@@ -1186,7 +1404,8 @@ function dayEntryPresentation(entry) {
     expense: data.direction === "in" || data.subtype === "refund"
       ? ["↩", `${data.category || "消费"}退款`, `+¥${Math.abs(Number(data.amount || 0)).toFixed(2).replace(/\.00$/, "")}${data.note ? ` · ${data.note}` : ""}`]
       : ["¥", data.subtype === "voucher_purchase" ? `${data.category || "餐饮"}团购券` : data.category || "消费", `¥${Number(data.amount || 0).toFixed(2).replace(/\.00$/, "")}${data.voucherStatus === "unused" ? " · 未使用" : ""}${data.note ? ` · ${data.note}` : ""}`],
-    meal: ["◇", "饮食", `${data.name || "餐食"} · ${Number(data.calories || 0)} 千卡 · 蛋白质 ${Number(data.protein || 0)}g / 碳水 ${Number(data.carbs || 0)}g / 脂肪 ${Number(data.fat || 0)}g`],
+    meal: ["◇", "饮食", `${mealView.name} · ${mealView.totals.calories} 千卡 · ${mealView.items.length} 项 · 蛋白质 ${mealView.totals.protein}g / 碳水 ${mealView.totals.carbs}g / 脂肪 ${mealView.totals.fat}g`],
+    meal_draft: ["◇", mealView.awaitingClarification ? "待补充饮食" : "待确认饮食", `${mealView.name} · ${mealView.totals.calories} 千卡 · ${mealView.items.length} 项，未计入`],
     meal_note: ["◇", data.analyzed ? "待确认饮食" : "待补充饮食", data.description || entry.sourceText || "已记录饮食"],
     life_event: ["·", data.category || "生活事件", `${data.title || "生活事件"}${data.durationMinutes ? ` · ${data.durationMinutes} 分钟` : ""}${data.details && data.details !== data.title ? ` · ${data.details}` : ""}`],
     note: ["·", "生活记录", data.text || entry.sourceText || "已记录"]
@@ -1210,17 +1429,39 @@ function editorSelect(label, name, value, choices) {
   return `<label>${escapeHtml(label)}<select name="${name}">${choices.map(([optionValue, optionLabel]) => `<option value="${escapeHtml(optionValue)}" ${optionValue === value ? "selected" : ""}>${escapeHtml(optionLabel)}</option>`).join("")}</select></label>`;
 }
 
+function mealItemRowHtml(item = {}) {
+  const value = (key) => (item[key] === undefined || item[key] === null || item[key] === "" ? "" : item[key]);
+  return `<div class="meal-item-row" data-meal-item>
+    <input type="hidden" name="itemId" value="${escapeHtml(item.id || "")}">
+    <label class="meal-item-main">食物<input name="itemName" value="${escapeHtml(item.name || "")}" placeholder="例如 牛肉" maxlength="60"></label>
+    <label class="meal-item-amount">份量<input name="itemAmount" value="${escapeHtml(item.amount || "")}" placeholder="150克" maxlength="40"></label>
+    <button type="button" class="meal-item-remove" data-remove-meal-item aria-label="删除这一项">×</button>
+    <label>热量<input name="itemCalories" type="number" min="0" step="1" inputmode="decimal" value="${escapeHtml(value("calories"))}" placeholder="kcal"></label>
+    <label>蛋白质<input name="itemProtein" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(value("protein"))}" placeholder="g"></label>
+    <label>碳水<input name="itemCarbs" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(value("carbs"))}" placeholder="g"></label>
+    <label>脂肪<input name="itemFat" type="number" min="0" step="0.1" inputmode="decimal" value="${escapeHtml(value("fat"))}" placeholder="g"></label>
+  </div>`;
+}
+
+function mealEditorFields(entry) {
+  const view = window.FeiyuMeal.view(entry);
+  const rows = view.items.length ? view.items : [{ id: "", name: "", amount: "", calories: "", protein: "", carbs: "", fat: "" }];
+  const total = view.totals;
+  return [
+    `<label class="full">餐食名称<input name="name" value="${escapeHtml(view.name === "本次饮食" ? "" : view.name)}" placeholder="留空则按食材自动命名" maxlength="80"></label>`,
+    `<div class="meal-item-editor full">
+      <div class="meal-item-editor-head"><span>食材与份量</span><strong data-meal-totals>合计 ${total.calories} 千卡 · 蛋白 ${total.protein}g · 碳水 ${total.carbs}g · 脂肪 ${total.fat}g</strong></div>
+      <div class="meal-item-rows" data-meal-items>${rows.map(mealItemRowHtml).join("")}</div>
+      <button type="button" class="meal-item-add" data-add-meal-item>＋ 添加一项</button>
+    </div>`,
+    editorTextarea("备注", "note", entry.data?.note || ""),
+    view.description ? `<p class="meal-source full">原始描述：${escapeHtml(view.description)}</p>` : ""
+  ].join("");
+}
+
 function editorFieldsForEntry(entry) {
   const data = entry.data || {};
-  if (entry.type === "meal") return [
-    editorInput("餐食名称", "name", data.name, { full: true }),
-    editorInput("热量（kcal）", "calories", data.calories, { type: "number", min: 0, step: "1" }),
-    editorInput("蛋白质（g）", "protein", data.protein, { type: "number", min: 0, step: "0.1" }),
-    editorInput("碳水（g）", "carbs", data.carbs, { type: "number", min: 0, step: "0.1" }),
-    editorInput("脂肪（g）", "fat", data.fat, { type: "number", min: 0, step: "0.1" }),
-    editorTextarea("食物明细（每行或逗号分隔）", "foods", (data.foods || []).join("、")),
-    editorTextarea("备注", "note", data.note)
-  ].join("");
+  if (entry.type === "meal" || entry.type === "meal_draft") return mealEditorFields(entry);
   if (entry.type === "expense") return [
     editorInput("金额（元）", "amount", Math.abs(Number(data.amount || 0)), { type: "number", min: 0.01, step: "0.01" }),
     editorSelect("方向", "direction", data.direction === "in" || data.subtype === "refund" ? "in" : "out", [["out", "支出"], ["in", "退款 / 收入"]]),
@@ -1255,19 +1496,41 @@ function editorFieldsForEntry(entry) {
   return editorTextarea("记录内容", "text", data.text || entry.sourceText || "");
 }
 
+function refreshMealItemTotals() {
+  const label = $("#entryEditorFields")?.querySelector?.("[data-meal-totals]");
+  if (!label) return;
+  const rows = [...($("#entryEditorFields")?.querySelectorAll?.("[data-meal-item]") || [])];
+  const items = rows.map((row) => ({
+    name: "临时",
+    calories: row.querySelector?.('input[name="itemCalories"]')?.value,
+    protein: row.querySelector?.('input[name="itemProtein"]')?.value,
+    carbs: row.querySelector?.('input[name="itemCarbs"]')?.value,
+    fat: row.querySelector?.('input[name="itemFat"]')?.value
+  }));
+  const totals = window.FeiyuMeal.totals(items);
+  label.textContent = `合计 ${totals.calories} 千卡 · 蛋白 ${totals.protein}g · 碳水 ${totals.carbs}g · 脂肪 ${totals.fat}g`;
+}
+
 function openEntryEditor(entryId) {
   const entry = state.entries.find((item) => item.id === entryId && item.source !== "demo");
   if (!entry) return;
+  const isMeal = window.FeiyuMeal.isMealType(entry.type);
   const timestamp = new Date(entry.occurredAt || entry.createdAt || Date.now());
   $("#entryEditor").dataset.mode = "edit";
   $("#entryEditor").dataset.entryId = entry.id;
-  $("#entryEditorKicker").textContent = "人工修改";
-  $("#entryEditorTitle").textContent = `编辑${recordTypeLabel(entry.type)}记录`;
+  $("#entryEditorKicker").textContent = isMeal ? "分项编辑" : "人工修改";
+  $("#entryEditorTitle").textContent = isMeal
+    ? entry.type === "meal_draft" ? "调整这张餐食卡" : "编辑饮食记录"
+    : `编辑${recordTypeLabel(entry.type)}记录`;
   $("#entryEditTypeWrap").classList.add("hidden");
   $("#entryEditType").value = entry.type;
   $("#entryEditDate").value = entry.date || localDateFromIso(timestamp);
   $("#entryEditTime").value = `${String(timestamp.getHours()).padStart(2, "0")}:${String(timestamp.getMinutes()).padStart(2, "0")}`;
   $("#entryEditorFields").innerHTML = editorFieldsForEntry(entry);
+  if ($("#entryEditorNote")) $("#entryEditorNote").textContent = isMeal
+    ? "合计会按各项重新计算；待确认的卡只有确认后才计入统计。"
+    : "人工保存后会立即更新当天与趋势；原聊天内容不会被改写。";
+  if (isMeal) refreshMealItemTotals();
   $("#deleteEditedEntry").classList.remove("hidden");
   $("#saveEditedEntry").textContent = "保存修改";
   $("#entryEditor").classList.remove("hidden");
@@ -1285,6 +1548,7 @@ function openEntryCreator() {
   $("#entryEditDate").value = selectedDay;
   $("#entryEditTime").value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   $("#entryEditorFields").innerHTML = editorFieldsForEntry({ type, data: {} });
+  if ($("#entryEditorNote")) $("#entryEditorNote").textContent = "人工保存后会立即更新当天与趋势；原聊天内容不会被改写。";
   $("#deleteEditedEntry").classList.add("hidden");
   $("#saveEditedEntry").textContent = "添加记录";
   $("#entryEditor").classList.remove("hidden");
@@ -1315,10 +1579,40 @@ function assignOptionalNumber(target, key, formData, options) {
 }
 
 function syncMealMessageFromEntry(entry) {
-  if (entry.type !== "meal") return;
+  if (!window.FeiyuMeal.isMealType(entry.type)) return;
   state.messages.forEach((message) => {
-    if (message.type === "meal" && message.sourceEntryId === entry.id) message.meal = { ...message.meal, ...entry.data };
+    if (message.type !== "meal") return;
+    const linkedId = message.draftId || message.sourceEntryId;
+    if (!linkedId || linkedId !== entry.id) return;
+    if (!message.draftId) message.draftId = entry.id;
   });
+}
+
+function readMealItems(formData) {
+  const names = formData.getAll("itemName");
+  const ids = formData.getAll("itemId");
+  const amounts = formData.getAll("itemAmount");
+  const calories = formData.getAll("itemCalories");
+  const protein = formData.getAll("itemProtein");
+  const carbs = formData.getAll("itemCarbs");
+  const fat = formData.getAll("itemFat");
+  const numberOrZero = (value, label) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return 0;
+    const number = Number(raw);
+    if (!Number.isFinite(number) || number < 0) throw new Error(`${label}数值不正确`);
+    return number;
+  };
+  return names.map((name, index) => ({
+    id: String(ids[index] || "").trim() || `item-${index + 1}`,
+    name: String(name || "").trim(),
+    amount: String(amounts[index] || "").trim(),
+    calories: numberOrZero(calories[index], "热量"),
+    protein: numberOrZero(protein[index], "蛋白质"),
+    carbs: numberOrZero(carbs[index], "碳水"),
+    fat: numberOrZero(fat[index], "脂肪"),
+    source: "user"
+  })).filter((item) => item.name);
 }
 
 async function saveEditedEntry(event) {
@@ -1337,12 +1631,18 @@ async function saveEditedEntry(event) {
     const previousEntry = isCreating ? null : cloneValue(existingEntry);
     let savedEntry = entry;
     const next = { ...entry.data };
-    if (entry.type === "meal") {
-      next.name = String(formData.get("name") || "本次饮食").trim().slice(0, 80);
-      for (const [key, label] of [["calories", "热量"], ["protein", "蛋白质"], ["carbs", "碳水"], ["fat", "脂肪"]]) assignOptionalNumber(next, key, formData, { label, minimum: 0, maximum: 100000 });
-      next.foods = String(formData.get("foods") || "").split(/[、，,\n]/).map((item) => item.trim()).filter(Boolean).slice(0, 20);
+    if (entry.type === "meal" || entry.type === "meal_draft") {
+      const items = readMealItems(formData);
+      if (!items.length) throw new Error("请至少填写一项食材");
+      next.items = items;
+      next.name = String(formData.get("name") || "").trim().slice(0, 80) || (items.length === 1 ? items[0].name : items.slice(0, 2).map((item) => item.name).join("、"));
       next.note = String(formData.get("note") || "").trim().slice(0, 300);
-      next.confirmed = true;
+      Object.assign(next, window.FeiyuMeal.totals(items));
+      next.status = entry.type === "meal" ? "confirmed" : "ready";
+      next.awaitingClarification = false;
+      next.manuallyEdited = true;
+      next.lastEditedAt = nowIso();
+      if (entry.type === "meal") next.confirmed = true;
     } else if (entry.type === "expense") {
       const amount = formNumber(formData, "amount", { label: "金额", minimum: 0.01, maximum: 10000000, decimals: 2 });
       if (amount === null) throw new Error("请填写金额");
@@ -1457,10 +1757,11 @@ function renderDay() {
 
   const entries = state.entries.filter((entry) => entry.date === selectedDay && entry.source !== "demo").sort((a, b) => String(a.occurredAt || a.createdAt).localeCompare(String(b.occurredAt || b.createdAt)));
   const metrics = window.FeiyuRecordOps.dayMetrics(entries);
+  const pendingMeals = entries.filter((entry) => entry.type === "meal_draft").length;
   const sleepValue = metrics.sleepHours ? `${metrics.sleepHours}h` : metrics.sleepCount ? "已记录" : "0h";
   const exerciseValue = metrics.exerciseMinutes ? `${metrics.exerciseMinutes}min` : metrics.exerciseCount ? `${metrics.exerciseCount}次` : "0min";
   $("#daySummaryGrid").innerHTML = [
-    ["饮食", `${metrics.calories} kcal`, `${metrics.mealCount} 条已确认`],
+    ["饮食", `${metrics.calories} kcal`, `${metrics.mealCount} 条已确认${pendingMeals ? ` · ${pendingMeals} 条待确认` : ""}`],
     ["净消费", formatMoney(metrics.expenseTotal), `${metrics.expenseCount} 笔支出${metrics.refundCount ? ` · ${metrics.refundCount} 笔退款` : ""}`],
     ["饮水", `${metrics.waterMl}ml`, metrics.waterMl ? "当天累计" : "暂无记录"],
     ["运动 / 睡眠", `${exerciseValue} · ${sleepValue}`, `${metrics.exerciseCount} 次运动 · ${metrics.sleepCount} 条睡眠`]
@@ -1598,6 +1899,9 @@ async function importJson(file) {
     state.tasks.push(...imported.tasks.filter((item) => !existingTaskIds.has(item.id)));
     if (Array.isArray(imported.messages)) state.messages.push(...imported.messages.filter((item) => item?.id && !existingMessageIds.has(item.id)));
     if (imported.settings?.profile) state.settings.profile = window.FeiyuProfile.normalize(imported.settings.profile);
+    const migrated = window.FeiyuMeal.migrate(state.entries, state.messages);
+    state.entries = migrated.entries;
+    state.messages = migrated.messages;
     state.demo = false;
     await saveState();
     renderAll();
@@ -1637,6 +1941,23 @@ function bindEvents() {
   $("#entryEditType").addEventListener("change", (event) => {
     if ($("#entryEditor").dataset.mode !== "create") return;
     $("#entryEditorFields").innerHTML = editorFieldsForEntry({ type: event.target.value, data: {} });
+    refreshMealItemTotals();
+  });
+  $("#entryEditorFields").addEventListener("click", (event) => {
+    if (event.target.closest("[data-add-meal-item]")) {
+      const container = $("#entryEditorFields").querySelector("[data-meal-items]");
+      container?.insertAdjacentHTML("beforeend", mealItemRowHtml());
+      refreshMealItemTotals();
+      return;
+    }
+    const removeButton = event.target.closest("[data-remove-meal-item]");
+    if (removeButton) {
+      removeButton.closest("[data-meal-item]")?.remove();
+      refreshMealItemTotals();
+    }
+  });
+  $("#entryEditorFields").addEventListener("input", (event) => {
+    if (event.target.closest("[data-meal-item]")) refreshMealItemTotals();
   });
   $("#closeEntryEditor").addEventListener("click", closeEntryEditor);
   $("#cancelEntryEdit").addEventListener("click", closeEntryEditor);
@@ -1682,11 +2003,13 @@ function bindEvents() {
   });
   $("#messageList").addEventListener("click", (event) => {
     const mealButton = event.target.closest("[data-confirm-meal]");
+    const editMealButton = event.target.closest("[data-edit-meal]");
     const profileButton = event.target.closest("[data-confirm-profile]");
     const cancelProfileButton = event.target.closest("[data-cancel-profile]");
     const undoButton = event.target.closest("[data-undo-operation]");
     const viewDayButton = event.target.closest("[data-view-operation-day]");
     if (mealButton) confirmMeal(mealButton.dataset.confirmMeal);
+    if (editMealButton) openEntryEditor(editMealButton.dataset.editMeal);
     if (profileButton) confirmProfileChange(profileButton.dataset.confirmProfile);
     if (cancelProfileButton) cancelProfileChange(cancelProfileButton.dataset.cancelProfile);
     if (undoButton) undoOperation(undoButton.dataset.undoOperation);
@@ -1785,6 +2108,22 @@ async function init() {
       stateNeedsMigration = true;
     }
   });
+  // v5→v6：把旧的待确认卡、待补充记录和已确认餐食统一成“草稿 + 分项”模型。
+  const mealMigration = window.FeiyuMeal.migrate(state.entries, state.messages);
+  if (mealMigration.changed) {
+    state.entries = mealMigration.entries;
+    state.messages = mealMigration.messages;
+    stateNeedsMigration = true;
+  }
+  // 分析中途崩溃可能留下空草稿；没有卡片也没有分项的“estimating”草稿直接清掉。
+  const linkedDraftIds = new Set(state.messages.filter((message) => message.type === "meal" && message.draftId).map((message) => message.draftId));
+  const beforeDraftCleanup = state.entries.length;
+  state.entries = state.entries.filter((entry) => {
+    if (entry.type !== "meal_draft") return true;
+    const stale = entry.data?.status === "estimating" && !(entry.data?.items || []).length && !linkedDraftIds.has(entry.id);
+    return !stale;
+  });
+  if (state.entries.length !== beforeDraftCleanup) stateNeedsMigration = true;
   const entryCountBeforeCleanup = state.entries.length;
   state.entries = state.entries.filter((entry) => !(entry.type === "note" && isBareRecordPrompt(entry.data?.text || entry.sourceText || "")));
   if (!state.demo && (state.entries.some((entry) => entry.source === "demo") || state.tasks.some((task) => task.source === "demo"))) {

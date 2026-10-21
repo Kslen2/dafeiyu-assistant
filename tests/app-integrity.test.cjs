@@ -15,7 +15,7 @@ const htmlVersion = html.match(/class="version-tag">v([^<]+)</)?.[1];
 assert.ok(appVersion, "app version must exist");
 assert.equal(htmlVersion, appVersion, "visible version must match packaged version");
 
-const requiredScripts = ["record-parser.js", "conversation-router.js", "record-operations.js", "profile-core.js", "assistant-core.js", "app.js"];
+const requiredScripts = ["record-parser.js", "conversation-router.js", "record-operations.js", "profile-core.js", "meal-model.js", "assistant-core.js", "app.js"];
 let previousIndex = -1;
 for (const script of requiredScripts) {
   const index = html.indexOf(`./${script}`);
@@ -56,6 +56,18 @@ assert.match(app, /undoOperation/, "structured result cards must support one-tap
 assert.match(app, /data-view-operation-day/, "operation results must link to the affected day");
 assert.match(app, /sanitizeUnverifiedChatReply/, "unverified AI chat replies must not claim database mutations");
 assert.match(app, /FeiyuRecords\.sanitizeUnverifiedChatReply/, "chat mutation guard must use the tested shared implementation");
+assert.match(app, /FeiyuRecords\.sanitizeFabricatedMealCard/, "chat replies must not imitate an app meal card");
+assert.match(app, /data-edit-meal/, "meal cards must expose per-item editing");
+assert.match(app, /FeiyuMeal\.migrate/, "older meal cards must migrate to the draft model");
+assert.match(app, /FeiyuMeal\.applyItems/, "manual meal edits must recompute totals from items");
+assert.match(app, /FeiyuMeal\.view/, "meal cards must render from the draft/record model");
+assert.match(app, /data-meal-items/, "the editor must render per-item rows");
+assert.match(html, /id="entryEditorNote"/, "the meal editor must explain that totals are derived from items");
+assert.match(html, /id="entryEditorFields"/, "the per-item editor must live in the existing editor dialog");
+assert.match(router, /isMealDetailSupplement/, "quantity-only corrections must revise the pending meal card");
+assert.match(router, /isMealCorrectionIntent/, "vague card complaints must be clarified by the app");
+assert.match(app, /routing\.route === "meal_correction_prompt"/, "vague card complaints must have a deterministic handler");
+assert.match(app, /routing\.route === "meal_caption"/, "bare meal captions must not create a new meal record");
 assert.match(router, /classifyUserIntent/, "the unified router must classify every message before selecting a handler");
 assert.match(app, /FeiyuConversationRouter\.routeMessage/, "the send pipeline must use the tested stateful conversation router");
 assert.match(app, /FeiyuConversationRouter\.assertRouteSafety/, "query routes must pass the no-mutation invariant");
